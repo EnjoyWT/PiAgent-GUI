@@ -1,0 +1,178 @@
+/* Solarized Dark 主题 - 高对比美化版，保留青蓝基因 */
+:root[data-theme='solarized-dark'] {
+  /* ================= 基础背景 (Base) ================= */
+  --theme-bg-sidebar: #05252e;
+  --theme-bg-main: #062c36;
+  --theme-bg-header: #082f3a;
+  --theme-bg-header-left: rgba(5, 37, 46, 0.95);
+  --theme-bg-content: #0b3a45;
+  --theme-bg-user-content: #113f45;
+  --theme-border-user-content: rgba(53, 184, 173, 0.26);
+
+  /* ================= 文字颜色 (Typography) ================= */
+  --theme-text-main: #d4e3df;
+  --theme-text-dim: #8fb0af;
+  --theme-text-bright: #f4fbf8;
+  --theme-text-user: #f4fbf8;
+
+  /* ================= 边框与阴影 (UI Details) ================= */
+  --theme-border-base: rgba(143, 176, 175, 0.18);
+  --theme-border-header: rgba(143, 176, 175, 0.16);
+  --theme-border-sidebar: rgba(143, 176, 175, 0.12);
+  --theme-shadow-sidebar: 0 14px 34px rgba(0, 20, 26, 0.42);
+
+  /* =========== 交互元素 (Selection, Hover, Active) =========== */
+  --theme-bg-active-item: rgba(53, 184, 173, 0.14);
+  --theme-border-active-item: rgba(53, 184, 173, 0.28);
+  --theme-bg-hover-item: #104955;
+  --theme-bg-hover-btn: #104955;
+
+  /* =========== 强调色 (Accents) =========== */
+  --theme-accent: #35b8ad;
+  --theme-accent-dim: #7bd3cb;
+  --chat-input-badge-bg: #35b8ad;
+  --chat-input-border-idle: rgba(143, 176, 175, 0.2);
+  --chat-input-toolbar-btn-bg: #082f3a;
+
+  /* 针对输入框和按钮的覆盖：跟随主题强调色 */
+  --focus-ring-color: var(--theme-accent);
+  --focus-ring-shadow:
+    0 0 6px 0px color-mix(in srgb, var(--focus-ring-color) 18%, transparent),
+    0 0 12px 2px color-mix(in srgb, var(--focus-ring-color) 8%, transparent);
+
+  /* ================= 设置页面专用强效适配 (Global Settings Patch) ================= */
+  /* 当处于深色模式时，将常用的浅色类映射到深色变量 */
+  --settings-bg-card: #062c36;
+  --settings-bg-input: #0b3a45;
+  --settings-border: rgba(143, 176, 175, 0.18);
+
+  /* =========== 欢迎页 =========== */
+  --onboarding-blob-primary: rgba(53, 184, 173, 0.11);
+  --onboarding-blob-secondary: rgba(143, 176, 175, 0.08);
+  --onboarding-settings-bg: rgba(8, 47, 58, 0.72);
+  --onboarding-settings-border: 1px solid rgba(143, 176, 175, 0.16);
+  --onboarding-settings-text: #8fb0af;
+  --onboarding-settings-text-hover: #f4fbf8;
+  --onboarding-settings-bg-hover: #104955;
+  --onboarding-settings-shadow: 0 16px 36px rgba(0, 20, 26, 0.28);
+  --onboarding-icon: #d4e3df;
+  --onboarding-icon-ping: #35b8ad;
+  --onboarding-title: #f4fbf8;
+  --onboarding-title-gradient: linear-gradient(135deg, #f4fbf8, #7bd3cb);
+  --onboarding-subtitle: #8fb0af;
+  --onboarding-button-bg: #35b8ad;
+  --onboarding-button-border: none;
+  --onboarding-button-text: #03252b;
+  --onboarding-button-bg-hover: #7bd3cb;
+  --onboarding-button-shadow: 0 15px 30px -10px rgba(53, 184, 173, 0.3);
+  --onboarding-button-shadow-hover: 0 20px 40px -12px rgba(53, 184, 173, 0.38);
+  --onboarding-button-overlay: linear-gradient(
+    135deg,
+    rgba(244, 251, 248, 0.12),
+    rgba(53, 184, 173, 0.12)
+  );
+  --onboarding-button-overlay-opacity: 0;
+  --onboarding-button-overlay-hover-opacity: 1;
+  --onboarding-caption: #8fb0af;
+}
+
+/* 深色模式下的全局 UI 类覆盖 */
+:root[data-theme='solarized-dark'] .bg-white {
+  background-color: var(--theme-bg-main) !important;
+}
+
+:root[data-theme='solarized-dark'] .bg-gray-50,
+:root[data-theme='solarized-dark'] .bg-gray-100 {
+  background-color: var(--theme-bg-content) !important;
+}
+
+:root[data-theme='solarized-dark'] .text-gray-900,
+:root[data-theme='solarized-dark'] .text-gray-800 {
+  color: var(--theme-text-bright) !important;
+}
+
+:root[data-theme='solarized-dark'] .text-gray-700,
+:root[data-theme='solarized-dark'] .text-gray-600 {
+  color: var(--theme-text-main) !important;
+}
+
+:root[data-theme='solarized-dark'] .text-gray-500,
+:root[data-theme='solarized-dark'] .text-gray-400 {
+  color: var(--theme-text-dim) !important;
+}
+
+:root[data-theme='solarized-dark'] .border-gray-50,
+:root[data-theme='solarized-dark'] .border-gray-100,
+:root[data-theme='solarized-dark'] .border-gray-200 {
+  border-color: var(--theme-border-base) !important;
+}
+
+:root[data-theme='solarized-dark'] input:not(.no-theme-form-control),
+:root[data-theme='solarized-dark'] textarea:not(.no-theme-form-control),
+:root[data-theme='solarized-dark'] select:not(.no-theme-form-control) {
+  background-color: var(--theme-bg-content) !important;
+  color: var(--theme-text-bright) !important;
+  border-color: var(--theme-border-base) !important;
+}
+
+:root[data-theme='solarized-dark'] .shadow-2xl,
+:root[data-theme='solarized-dark'] .shadow-xl {
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* 映射特定的按钮色和强调色 */
+:root[data-theme='solarized-dark'] .bg-blue-500 {
+  background-color: var(--theme-accent) !important;
+}
+
+:root[data-theme='solarized-dark'] .text-blue-500,
+:root[data-theme='solarized-dark'] .text-blue-600,
+:root[data-theme='solarized-dark'] .text-\[\#6c8b93\],
+:root[data-theme='solarized-dark'] .text-\[\#6f9aa4\] {
+  color: var(--theme-accent) !important;
+}
+
+:root[data-theme='solarized-dark'] .bg-\[\#6f9aa4\] {
+  background-color: var(--theme-accent) !important;
+}
+
+:root[data-theme='solarized-dark'] .bg-\[\#e8f0f2\],
+:root[data-theme='solarized-dark'] .bg-\[\#f0f7f9\],
+:root[data-theme='solarized-dark'] .bg-\[\#e9f0f6\] {
+  background-color: var(--theme-bg-active-item) !important;
+}
+
+/* 增强常用半透明背景的处理 */
+:root[data-theme='solarized-dark'] .bg-white\/90,
+:root[data-theme='solarized-dark'] .bg-white\/95 {
+  background-color: rgba(6, 44, 54, 0.95) !important;
+}
+
+:root[data-theme='solarized-dark'] .bg-gray-50\/50,
+:root[data-theme='solarized-dark'] .bg-gray-50\/80 {
+  background-color: rgba(11, 58, 69, 0.72) !important;
+}
+
+/* 强制覆盖 Scrollbar (针对 Chrome/Electron) */
+:root[data-theme='solarized-dark'] ::-webkit-scrollbar-thumb {
+  background: var(--theme-text-dim) !important;
+  border: 2px solid var(--theme-bg-main) !important;
+}
+
+:root[data-theme='solarized-dark'] ::-webkit-scrollbar-track {
+  background: var(--theme-bg-main) !important;
+}
+
+/* ================= 供应商图标在深色模式下的高阶自适应 ================= */
+:root[data-theme='solarized-dark'] img[src*='openai.svg'],
+:root[data-theme='solarized-dark'] img[src*='anthropic.svg'],
+:root[data-theme='solarized-dark'] img[src*='xai.svg'],
+:root[data-theme='solarized-dark'] img[src*='github-copilot.svg'],
+:root[data-theme='solarized-dark'] img[src*='groq.svg'],
+:root[data-theme='solarized-dark'] img[src*='mistral.svg'],
+:root[data-theme='solarized-dark'] img[src*='cohere.svg'],
+:root[data-theme='solarized-dark'] img[src*='together.svg'],
+:root[data-theme='solarized-dark'] img[src*='openrouter.svg'],
+:root[data-theme='solarized-dark'] img[src*='cerebras.svg'] {
+  filter: invert(1) brightness(1.5) !important;
+}

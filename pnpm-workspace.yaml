@@ -1,0 +1,8 @@
+onlyBuiltDependencies:
+  - "@enjoywt/pi-agent-core"
+  - "@enjoywt/pi-ai"
+  - "@enjoywt/pi-coding-agent"
+  - better-sqlite3
+  - electron
+  - esbuild
+  - kframe

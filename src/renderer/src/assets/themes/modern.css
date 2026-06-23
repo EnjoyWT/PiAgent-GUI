@@ -1,0 +1,66 @@
+/* 极简现代主题 (Modern Theme) - 默认主题，侧边栏纯白，主区域纯白 */
+:root,
+:root[data-theme='modern'] {
+  /* ================= 基础背景 ================= */
+  --theme-bg-sidebar: #ffffff;
+  --theme-bg-main: #ffffff;
+  --theme-bg-header: #ffffff;
+  --theme-bg-header-left: rgba(249, 250, 251, 0.9);
+  --theme-bg-content: #f5f5f5;
+  --theme-bg-user-content: #e8f1ff;
+  --theme-border-user-content: #d7e6ff;
+
+  /* ================= 文字颜色 ================= */
+  --theme-text-main: #111827; /* 灰色 900 */
+  --theme-text-dim: #6b7280; /* 灰色 500 */
+  --theme-text-bright: #000000;
+  --theme-text-user: #1f2937; /* 用户消息文字 */
+
+  /* ================= 边框与阴影 ================= */
+  --theme-border-base: #f3f4f6;
+  --theme-border-header: #f3f4f6;
+  --theme-border-sidebar: rgba(220, 223, 228, 0.35);
+  --theme-shadow-sidebar: 0 0 10px rgba(15, 23, 42, 0.05);
+  --chat-input-border-idle: #f3f4f6;
+  --chat-input-toolbar-btn-bg: #fcfcfd;
+
+  /* =========== 交互元素 (选中、悬停等) =========== */
+  --theme-bg-active-item: rgba(229, 231, 235, 0.5);
+  --theme-border-active-item: #f3f4f6;
+  --theme-shadow-active-item: none;
+  --theme-bg-hover-item: rgba(229, 231, 235, 0.5);
+  --theme-bg-hover-btn: #f3f4f6;
+
+  /* =========== 强调色 =========== */
+  --theme-accent: #3b82f6; /* Blue 500 */
+  --theme-accent-dim: #60a5fa; /* Blue 400 */
+
+  /* =========== 欢迎页 =========== */
+  --onboarding-blob-primary: rgba(59, 130, 246, 0.1);
+  --onboarding-blob-secondary: rgba(16, 185, 129, 0.1);
+  --onboarding-settings-bg: rgba(255, 255, 255, 0.4);
+  --onboarding-settings-border: 1px solid rgba(226, 232, 240, 0.5);
+  --onboarding-settings-text: #64748b;
+  --onboarding-settings-text-hover: #0f172a;
+  --onboarding-settings-bg-hover: #ffffff;
+  --onboarding-settings-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --onboarding-icon: #0f172a;
+  --onboarding-icon-ping: #3b82f6;
+  --onboarding-title: #0f172a;
+  --onboarding-title-gradient: linear-gradient(to right, #2563eb, #059669);
+  --onboarding-subtitle: #64748b;
+  --onboarding-button-bg: #0f172a;
+  --onboarding-button-border: none;
+  --onboarding-button-text: #ffffff;
+  --onboarding-button-bg-hover: #1e293b;
+  --onboarding-button-shadow: 0 15px 30px -10px rgba(15, 23, 42, 0.2);
+  --onboarding-button-shadow-hover: 0 20px 40px -12px rgba(15, 23, 42, 0.3);
+  --onboarding-button-overlay: linear-gradient(
+    to right,
+    rgba(96, 165, 250, 0.2),
+    rgba(52, 211, 153, 0.2)
+  );
+  --onboarding-button-overlay-opacity: 0;
+  --onboarding-button-overlay-hover-opacity: 1;
+  --onboarding-caption: #94a3b8;
+}

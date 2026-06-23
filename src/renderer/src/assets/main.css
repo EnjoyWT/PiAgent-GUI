@@ -1,0 +1,74 @@
+@import 'tailwindcss';
+@plugin '@tailwindcss/typography';
+@import './themes/modern.css';
+@import './themes/classic.css';
+@import './themes/solarized-dark.css';
+@import './themes/dark.css';
+
+:root {
+  --sidebar-bg: #f9f9f9;
+  --border-color: #e5e7eb;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  overflow: hidden;
+  background: transparent;
+}
+
+#app {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+}
+
+.window-shell {
+  width: 100%;
+  height: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  background: #fff;
+}
+
+/* Global focus appearance (for theming) */
+:root {
+  --focus-ring-color: var(--theme-accent);
+  /* 全局聚焦阴影：跟随当前主题强调色，采用多重高斯羽化渐变，彻底告别硬壳壳边缘 */
+  --focus-ring-shadow:
+    0 0 6px 0px color-mix(in srgb, var(--focus-ring-color) 18%, transparent),
+    0 0 12px 2px color-mix(in srgb, var(--focus-ring-color) 8%, transparent);
+
+  /* Brand Theme Colors */
+  --brand-primary: #00ba88;
+  --brand-hover: #00a87a;
+  --brand-light: rgba(0, 186, 136, 0.1);
+  --brand-shadow: rgba(0, 186, 136, 0.15);
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+button:focus-visible {
+  outline: none;
+  /* 聚焦边框：淡化为 35% 浓度，极其精致 */
+  border-color: color-mix(in srgb, var(--focus-ring-color) 35%, transparent);
+  box-shadow: var(--focus-ring-shadow);
+  /* 全局增加丝滑过渡 */
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+/* Remove default blue focus on interactive elements (fallback) */
+input:focus,
+textarea:focus,
+select:focus,
+button:focus {
+  outline: none;
+}

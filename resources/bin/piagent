@@ -1,0 +1,101 @@
+#!/usr/bin/env node
+
+const endpoint = (process.env.PIAGENT_ENDPOINT || 'http://127.0.0.1:5566').replace(/\/+$/, '')
+
+const usage = () => {
+  process.stderr.write('Usage: piagent <module> <action> [args...] [--json]\n')
+}
+
+const coerceFlagValue = (value) => {
+  if (value === 'true') return true
+  if (value === 'false') return false
+  if (/^-?\d+(\.\d+)?$/.test(value)) return Number(value)
+  return value
+}
+
+const parseArgv = (argv) => {
+  const [moduleName, actionName, ...rest] = argv
+  const args = []
+  const flags = {}
+
+  for (let i = 0; i < rest.length; i += 1) {
+    const token = rest[i]
+    if (!token.startsWith('--')) {
+      args.push(token)
+      continue
+    }
+
+    const withoutPrefix = token.slice(2)
+    if (!withoutPrefix) continue
+
+    const eqIndex = withoutPrefix.indexOf('=')
+    if (eqIndex >= 0) {
+      const name = withoutPrefix.slice(0, eqIndex)
+      const value = withoutPrefix.slice(eqIndex + 1)
+      if (name) flags[name] = coerceFlagValue(value)
+      continue
+    }
+
+    const nextToken = rest[i + 1]
+    if (nextToken && !nextToken.startsWith('--')) {
+      flags[withoutPrefix] = coerceFlagValue(nextToken)
+      i += 1
+      continue
+    }
+
+    flags[withoutPrefix] = true
+  }
+
+  return {
+    moduleName,
+    actionName,
+    args,
+    flags
+  }
+}
+
+const writeStream = (stream, value) => {
+  if (!value) return
+  stream.write(value.endsWith('\n') ? value : `${value}\n`)
+}
+
+const main = async () => {
+  const { moduleName, actionName, args, flags } = parseArgv(process.argv.slice(2))
+
+  if (!moduleName || !actionName) {
+    usage()
+    process.exitCode = 2
+    return
+  }
+
+  const response = await fetch(`${endpoint}/v1/cli/execute`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({
+      module: moduleName,
+      action: actionName,
+      args,
+      flags,
+      cwd: process.cwd()
+    })
+  })
+
+  if (!response.ok) {
+    writeStream(process.stderr, `CLI gateway unavailable (${response.status})`)
+    process.exitCode = 3
+    return
+  }
+
+  const payload = await response.json()
+  writeStream(process.stdout, payload.stdout || '')
+  writeStream(process.stderr, payload.stderr || '')
+  process.exitCode = Number.isInteger(payload.exitCode) ? payload.exitCode : payload.ok ? 0 : 1
+}
+
+main().catch((error) => {
+  const message = error instanceof Error ? error.message : String(error)
+  writeStream(process.stderr, `CLI gateway unavailable: ${message}`)
+  process.exitCode = 3
+})

@@ -1,0 +1,72 @@
+/* 经典灰白主题 (Classic Theme) - 传统的双栏布局样式，侧边纯白，主区域浅灰 */
+:root[data-theme='classic'] {
+  /* ================= 侧边栏配色 ================= */
+  --theme-bg-sidebar: #ffffff; /* 侧边栏整体背景色 (纯白) */
+  --theme-border-sidebar: transparent; /* 侧边栏右侧边框色，传统风格依赖阴影，边框透明 */
+  --theme-shadow-sidebar: var(--panel-shadow-right); /* 侧边栏突出的右侧深阴影 */
+
+  /* ================= 主区域配色 ================= */
+  --theme-bg-main: #fafafa; /* 聊天/工作主内容区背景色 (浅灰) */
+  --theme-bg-content: #f3f3f3; /* 设置面板等内部内容块的背景色 */
+
+  /* =============== 顶部导航栏配色 =============== */
+  --theme-bg-header: #fafafa; /* 顶栏主背景色，与主区域一致 (浅灰) */
+  --theme-bg-header-left: rgba(
+    255,
+    255,
+    255,
+    0.8
+  ); /* 顶栏左侧(侧边栏上方)背景色，与侧栏一致 (纯白半透明) */
+  --theme-border-header: #e5e7eb; /* 顶栏底部的深灰色分割线 */
+  --theme-border-base: #e5e7eb; /* 通用边框色 */
+
+  /* ================= 文字颜色 ================= */
+  --theme-text-main: #111827; /* 主文字 */
+  --theme-text-dim: #6b7280; /* 次级文字 */
+  --theme-text-bright: #111827; /* 强调文字 */
+  --theme-text-user: #1f2937; /* 用户消息文字 */
+  --theme-border-user-content: #d7e6ff;
+
+  /* =========== 交互元素配色 (选中、悬停、强调) =========== */
+  --theme-bg-active-item: #e5e7eb; /* 侧边栏当前选中线程项的背景色 (加深灰色背景) */
+  --theme-border-active-item: #e5e7eb; /* 侧边栏当前选中线程项的边框色 */
+  --theme-shadow-active-item: none; /* 侧边栏选中项无阴影 */
+  --theme-bg-hover-item: #e5e7eb; /* 侧边栏线程列表项的悬停背景色 */
+  --theme-bg-hover-btn: #e5e7eb; /* 图标按钮等的通用悬停背景色 */
+  --theme-bg-user-content: #e8f1ff;
+  --theme-accent: #6c8b93; /* 经典主题沿用原有灰蓝强调色 */
+  --theme-accent-dim: #8aa6b3;
+
+  --chat-input-badge-bg: #8aa6b3;
+  --chat-input-border-idle: #e5e7eb;
+  --chat-input-toolbar-btn-bg: #fcfcfd;
+
+  /* =========== 欢迎页 =========== */
+  --onboarding-blob-primary: rgba(59, 130, 246, 0.1);
+  --onboarding-blob-secondary: rgba(16, 185, 129, 0.1);
+  --onboarding-settings-bg: rgba(255, 255, 255, 0.4);
+  --onboarding-settings-border: 1px solid rgba(226, 232, 240, 0.5);
+  --onboarding-settings-text: #64748b;
+  --onboarding-settings-text-hover: #0f172a;
+  --onboarding-settings-bg-hover: #ffffff;
+  --onboarding-settings-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --onboarding-icon: #0f172a;
+  --onboarding-icon-ping: #3b82f6;
+  --onboarding-title: #0f172a;
+  --onboarding-title-gradient: linear-gradient(to right, #2563eb, #059669);
+  --onboarding-subtitle: #64748b;
+  --onboarding-button-bg: #0f172a;
+  --onboarding-button-border: none;
+  --onboarding-button-text: #ffffff;
+  --onboarding-button-bg-hover: #1e293b;
+  --onboarding-button-shadow: 0 15px 30px -10px rgba(15, 23, 42, 0.2);
+  --onboarding-button-shadow-hover: 0 20px 40px -12px rgba(15, 23, 42, 0.3);
+  --onboarding-button-overlay: linear-gradient(
+    to right,
+    rgba(96, 165, 250, 0.2),
+    rgba(52, 211, 153, 0.2)
+  );
+  --onboarding-button-overlay-opacity: 0;
+  --onboarding-button-overlay-hover-opacity: 1;
+  --onboarding-caption: #94a3b8;
+}
