@@ -1,4 +1,4 @@
-import type { Message } from '@enjoywt/pi-ai'
+import type { Message } from '@earendil-works/pi-ai/compat'
 
 type ThreadWithSessionManager = {
   agent: {

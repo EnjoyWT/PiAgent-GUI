@@ -31,12 +31,9 @@
     "build:linux": "pnpm run build && electron-builder --linux"
   },
   "dependencies": {
-    "@earendil-works/pi-tui": "0.79.0",
+    "@earendil-works/pi-tui": "0.80.7",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
-    "@enjoywt/pi-agent-core": "github:EnjoyWT/pi-mono#my-work&path:/packages/agent",
-    "@enjoywt/pi-ai": "github:EnjoyWT/pi-mono#my-work&path:/packages/ai",
-    "@enjoywt/pi-coding-agent": "github:EnjoyWT/pi-mono#my-work&path:/packages/coding-agent",
     "@fastify/merge-json-schemas": "0.2.1",
     "@git-diff-view/vue": "^0.0.35",
     "@hono/node-server": "1.19.11",
@@ -109,7 +106,10 @@
     "which": "5.0.0",
     "yl-animated-caret": "github:EnjoyWT/YLAnimatedCaret",
     "zod": "4.3.6",
-    "zod-to-json-schema": "3.25.1"
+    "zod-to-json-schema": "3.25.1",
+    "@earendil-works/pi-agent-core": "0.80.7",
+    "@earendil-works/pi-ai": "0.80.7",
+    "@earendil-works/pi-coding-agent": "0.80.7"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "3.0.0",
@@ -136,15 +136,15 @@
   },
   "pnpm": {
     "overrides": {
-      "@enjoywt/pi-agent-core": "github:EnjoyWT/pi-mono#my-work&path:/packages/agent",
-      "@enjoywt/pi-ai": "github:EnjoyWT/pi-mono#my-work&path:/packages/ai",
-      "@enjoywt/pi-coding-agent": "github:EnjoyWT/pi-mono#my-work&path:/packages/coding-agent",
-      "vite": "^8.0.16"
+      "vite": "^8.0.16",
+      "@earendil-works/pi-agent-core": "0.80.7",
+      "@earendil-works/pi-ai": "0.80.7",
+      "@earendil-works/pi-coding-agent": "0.80.7"
     },
     "onlyBuiltDependencies": [
-      "@enjoywt/pi-agent-core",
-      "@enjoywt/pi-ai",
-      "@enjoywt/pi-coding-agent",
+      "@earendil-works/pi-coding-agent",
+      "@earendil-works/pi-ai",
+      "@earendil-works/pi-agent-core",
       "better-sqlite3",
       "electron",
       "esbuild",

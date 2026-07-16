@@ -1,5 +1,5 @@
-import { completeSimple, getModels } from '@enjoywt/pi-ai'
-import type { Api, KnownProvider, Model } from '@enjoywt/pi-ai'
+import { completeSimple, getModels } from '@earendil-works/pi-ai/compat'
+import type { Api, KnownProvider, Model } from '@earendil-works/pi-ai/compat'
 import type {
   ProviderAdapter,
   ProviderCapabilitySet,
@@ -92,7 +92,7 @@ export const createBuiltInProviderAdapter = (
   })
 
   const getProviderModels = (): Model<Api>[] =>
-    (getModels(definition.runtimeProvider as KnownProvider) as Model<Api>[]).map((model) =>
+    (getModels(definition.runtimeProvider as KnownProvider as any) as Model<Api>[]).map((model) =>
       normalizeBuiltInProviderModelBaseUrl(definition.id, model)
     )
 

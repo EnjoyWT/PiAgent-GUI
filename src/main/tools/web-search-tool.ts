@@ -1,4 +1,4 @@
-import type { ToolDefinition } from '@enjoywt/pi-coding-agent'
+import type { ToolDefinition } from '@earendil-works/pi-coding-agent'
 import { Type } from '@sinclair/typebox'
 import type { HiddenWebFetchInput } from '../webfetch/hidden-webfetch-runner.ts'
 

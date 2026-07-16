@@ -93,13 +93,9 @@ type QueueDispatcherState = {
   ensureQueueController: (threadId: string) => ThreadQueueController
   bumpQueueRevision: (controller: ThreadQueueController) => void
   removeQueueItem: (controller: ThreadQueueController, itemId: string) => void
-  removeRuntimeQueueItemById: (
+  removeRuntimeQueueItemByText: (
     controller: ThreadQueueController,
-    queueItemId?: string | null
-  ) => PendingQueueItem | null
-  removeRuntimeQueueItemBySubmissionId: (
-    controller: ThreadQueueController,
-    submissionId?: string | null
+    text: string
   ) => PendingQueueItem | null
   syncRuntimeQueue: (threadId: string) => Promise<void>
   enqueuePendingMessage: (
@@ -121,7 +117,6 @@ type QueueDispatcherState = {
       promptOptions?: {
         streamingBehavior?: 'steer' | 'followUp'
         images?: ChatImageBlock[]
-        submissionId?: string
       }
       contentJson?: ChatMessageContent | null
     }
@@ -144,7 +139,6 @@ export const submitLocalMessageToGateway = async (input: {
   threadId: string
   text: string
   messageId?: string | null
-  submissionId?: string | null
   images?: ChatImageBlock[]
   streamingBehavior?: 'steer' | 'followUp'
 }): Promise<SubmitLocalMessageResult> => {
@@ -152,7 +146,6 @@ export const submitLocalMessageToGateway = async (input: {
     threadId: input.threadId,
     text: input.text,
     messageId: input.messageId ?? null,
-    submissionId: input.submissionId ?? null,
     images: toPlainImageBlocks(input.images ?? []),
     streamingBehavior: input.streamingBehavior
   })
@@ -250,25 +243,16 @@ export const useQueueDispatcher = (options: QueueDispatcherOptions): QueueDispat
     }
   }
 
-  const removeRuntimeQueueItemById = (
-    controller: ThreadQueueController,
-    queueItemId?: string | null
-  ): PendingQueueItem | null => {
-    if (!queueItemId) return null
-    const index = controller.runtimeQueue.findIndex((item) => item.id === queueItemId)
-    if (index < 0) return null
-    const [removed] = controller.runtimeQueue.splice(index, 1)
-    bumpQueueRevision(controller)
-    return removed ?? null
-  }
 
-  const removeRuntimeQueueItemBySubmissionId = (
+
+  const removeRuntimeQueueItemByText = (
     controller: ThreadQueueController,
-    submissionId?: string | null
+    text: string
   ): PendingQueueItem | null => {
-    const normalized = String(submissionId ?? '').trim()
-    if (!normalized) return null
-    const index = controller.runtimeQueue.findIndex((item) => item.submissionId === normalized)
+    const normalized = text.replace(/\r\n/g, '\n').trim()
+    const index = controller.runtimeQueue.findIndex(
+      (item) => item.text.replace(/\r\n/g, '\n').trim() === normalized
+    )
     if (index < 0) return null
     const [removed] = controller.runtimeQueue.splice(index, 1)
     bumpQueueRevision(controller)
@@ -322,7 +306,6 @@ export const useQueueDispatcher = (options: QueueDispatcherOptions): QueueDispat
       images = []
     }
     const controller = ensureQueueController(threadId)
-    const submissionId = createSubmissionId()
 
     for (const item of items) {
       removeQueueItem(controller, item.id)
@@ -338,7 +321,7 @@ export const useQueueDispatcher = (options: QueueDispatcherOptions): QueueDispat
         text,
         undefined,
         toPlainContentJson(buildMessageContentJson(blocks)),
-        { submissionId }
+        undefined
       )
       persistedUserId = row.id
 
@@ -348,7 +331,6 @@ export const useQueueDispatcher = (options: QueueDispatcherOptions): QueueDispat
         messageId: persistedUserId,
         images,
         streamingBehavior: delivery,
-        submissionId
       })
       controller.runtimeQueue.push({
         id: persistedUserId,
@@ -357,7 +339,6 @@ export const useQueueDispatcher = (options: QueueDispatcherOptions): QueueDispat
         images: images?.map((image) => ({ ...image })),
         createdAt: Date.now(),
         status: 'submitted',
-        submissionId,
         submittedAt: Date.now(),
         delivery,
         runtimeText: text
@@ -435,7 +416,6 @@ export const useQueueDispatcher = (options: QueueDispatcherOptions): QueueDispat
       promptOptions?: {
         streamingBehavior?: 'steer' | 'followUp'
         images?: ChatImageBlock[]
-        submissionId?: string
       }
       contentJson?: ChatMessageContent | null
     }
@@ -449,7 +429,6 @@ export const useQueueDispatcher = (options: QueueDispatcherOptions): QueueDispat
     if (dispatchOptions?.clearAttachments && isActiveThread) {
       options.composerAttachments.value = []
     }
-    const submissionId = dispatchOptions?.promptOptions?.submissionId ?? createSubmissionId()
 
     const list = options.ensureMessageBuffer(threadId)
     const userMsg: ChatMessage = {
@@ -458,7 +437,6 @@ export const useQueueDispatcher = (options: QueueDispatcherOptions): QueueDispat
       includeInAgentContext: true,
       content: text,
       blocks,
-      submissionId
     }
     list.push(userMsg)
 
@@ -484,7 +462,7 @@ export const useQueueDispatcher = (options: QueueDispatcherOptions): QueueDispat
         text,
         undefined,
         toPlainContentJson(dispatchOptions?.contentJson),
-        { submissionId }
+        undefined
       )
       userMsg.id = row.id
       userMsg.createdAt = row.created_at
@@ -516,7 +494,6 @@ export const useQueueDispatcher = (options: QueueDispatcherOptions): QueueDispat
         messageId: persistedUserId ?? null,
         images: dispatchOptions?.promptOptions?.images ?? [],
         streamingBehavior: dispatchOptions?.promptOptions?.streamingBehavior,
-        submissionId
       })
 
       if ((controller.runtimeState as QueueRuntimeState) === 'aborting') {
@@ -823,8 +800,7 @@ export const useQueueDispatcher = (options: QueueDispatcherOptions): QueueDispat
     ensureQueueController,
     bumpQueueRevision,
     removeQueueItem,
-    removeRuntimeQueueItemById,
-    removeRuntimeQueueItemBySubmissionId,
+    removeRuntimeQueueItemByText,
     syncRuntimeQueue,
     enqueuePendingMessage,
     dispatchMessageNow,

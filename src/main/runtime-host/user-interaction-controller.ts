@@ -1,4 +1,4 @@
-import type { ToolDefinition } from '@enjoywt/pi-coding-agent'
+import type { ToolDefinition } from '@earendil-works/pi-coding-agent'
 import type { CoreCommandService, InteractionCheckpoint } from '../core-v2/domain.ts'
 import { createQuestionTool } from '../tools/question-tool.ts'
 import { createQuestionnaireTool } from '../tools/questionnaire-tool.ts'

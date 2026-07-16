@@ -157,7 +157,6 @@ export class ScheduledTaskScheduler {
             messageKind: 'automation',
             includeInAgentContext: false,
             agentRunId: null,
-            submissionId: null,
             agentEntryId: null,
             agentTurnId: null,
             toolCallId: null,

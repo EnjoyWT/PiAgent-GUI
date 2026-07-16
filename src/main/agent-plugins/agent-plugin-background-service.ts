@@ -3,7 +3,7 @@ import {
   DefaultResourceLoader,
   type ExtensionFactory,
   type ToolDefinition
-} from '@enjoywt/pi-coding-agent'
+} from '@earendil-works/pi-coding-agent'
 import { getDefaultAgentDir } from '../paths.ts'
 import {
   resolveAgentPluginResources,

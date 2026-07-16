@@ -151,7 +151,6 @@ export type PendingQueueItem = {
   images?: ChatImageBlock[]
   createdAt: number
   status: PendingQueueItemStatus
-  submissionId?: string
   submittedAt?: number
   delivery?: PendingQueueDelivery
   runtimeText?: string
@@ -172,7 +171,6 @@ export type ChatMessage = {
   agentEntryId?: string
   agentRunId?: string
   agentTurnId?: string
-  submissionId?: string
   createdAt?: string
   runtimeSequence?: number | null
   role: 'user' | 'assistant'

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import type { ToolDefinition } from '@enjoywt/pi-coding-agent'
+import type { ToolDefinition } from '@earendil-works/pi-coding-agent'
 import { createComputerSystemInfoTool } from '../../../src/main/tools/computer-system-info-tool.ts'
 
 type ComputerSystemInfoToolOptions = NonNullable<Parameters<typeof createComputerSystemInfoTool>[0]>

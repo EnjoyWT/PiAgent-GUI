@@ -585,7 +585,6 @@ const buildMessageProjection = (
     agentRunId: agentRunId ?? meta.agentRunId ?? null,
     agentTurnId: meta.agentTurnId ?? null,
     agentEntryId: meta.agentEntryId ?? null,
-    submissionId: meta.submissionId ?? null,
     role: message.role === 'assistant' ? 'assistant' : 'user',
     messageKind: isAutomationPrompt ? 'automation' : meta.messageKind,
     includeInAgentContext: isAutomationPrompt ? false : meta.includeInAgentContext,

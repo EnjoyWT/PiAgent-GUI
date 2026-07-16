@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import type { ExtensionContext, Skill } from '@enjoywt/pi-coding-agent'
+import type { ExtensionContext, Skill } from '@earendil-works/pi-coding-agent'
 import { createReadSkillTool } from '../../../src/main/tools/read-skill-tool.ts'
 
 type TextToolResult = {

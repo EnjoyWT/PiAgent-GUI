@@ -105,7 +105,6 @@ const toMessageRow = (threadId: string, message: ConversationMessage): MessageRo
     content: message.text ?? '',
     content_json: serializeLocalThreadContent(meta.content),
     agent_run_id: meta.agentRunId ?? null,
-    submission_id: meta.submissionId ?? null,
     agent_entry_id: meta.agentEntryId ?? null,
     agent_turn_id: meta.agentTurnId ?? null,
     tool_call_id: meta.toolCallId ?? null,

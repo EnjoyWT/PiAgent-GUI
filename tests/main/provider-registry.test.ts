@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { getProviders } from '@enjoywt/pi-ai'
+import { getProviders } from '@earendil-works/pi-ai/compat'
 import { resolveProviderModelBaseUrl } from '../../src/shared/providers/adapters/builtin.ts'
 import {
   getDefaultProviderDefinition,

@@ -1,4 +1,4 @@
-import type { Message, Usage } from '@enjoywt/pi-ai'
+import type { Message, Usage } from '@earendil-works/pi-ai/compat'
 import type { ContextEntry, ContextModelSeed, ModelSeedSnapshot } from './context-types.ts'
 import { ContextStore } from './context-store.ts'
 

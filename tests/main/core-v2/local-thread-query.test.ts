@@ -88,7 +88,6 @@ const upsertLocalThreadMessage = (
         messageKind: input.messageKind ?? 'chat',
         includeInAgentContext: input.includeInAgentContext ?? true,
         agentRunId: input.agentRunId ?? null,
-        submissionId: null,
         agentEntryId: null,
         agentTurnId: null,
         toolCallId: null,

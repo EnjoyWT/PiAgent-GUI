@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import type { ExtensionContext } from '@enjoywt/pi-coding-agent'
+import type { ExtensionContext } from '@earendil-works/pi-coding-agent'
 import { createWebFetchTool } from '../../../src/main/tools/webfetch-tool.ts'
 import { createWebSearchTool } from '../../../src/main/tools/web-search-tool.ts'
 

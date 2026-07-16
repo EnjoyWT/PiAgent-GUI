@@ -47,7 +47,6 @@ type LocalThreadContextPruner = {
 type MessagePersistenceOptions = {
   messageKind?: MessageRow['message_kind']
   includeInAgentContext?: boolean
-  submissionId?: string | null
   agentTurnId?: string | null
   toolCallId?: string
   stepIndex?: number
@@ -369,7 +368,6 @@ export class LocalThreadHostService {
     id: string,
     fields: {
       agentRunId?: string | null
-      submissionId?: string | null
       agentTurnId?: string | null
       runtimeSequence?: number | null
       createdAt?: string | number | Date | null
@@ -386,10 +384,6 @@ export class LocalThreadHostService {
         fields.agentRunId === undefined
           ? existing.agent_run_id
           : String(fields.agentRunId ?? '').trim() || null,
-      submission_id:
-        fields.submissionId === undefined
-          ? existing.submission_id
-          : String(fields.submissionId ?? '').trim() || null,
       agent_turn_id:
         fields.agentTurnId === undefined
           ? existing.agent_turn_id
@@ -416,7 +410,6 @@ export class LocalThreadHostService {
     const next: MessageRow = {
       ...existing,
       agent_run_id: null,
-      submission_id: null,
       agent_turn_id: null,
       runtime_sequence: null
     }
@@ -446,7 +439,6 @@ export class LocalThreadHostService {
     agentTurnId?: string | null
     consumedAt: string | number | Date
     runtimeSequence?: number | null
-    submissionId?: string | null
   }): MessageRow | null {
     const normalizedThreadId = String(input.threadId ?? '').trim()
     const normalizedText = String(input.text ?? '')
@@ -481,7 +473,6 @@ export class LocalThreadHostService {
       return this.updateUserMessageRuntimeLink(matchedCandidate.id, {
         agentRunId: normalizedRunId,
         agentTurnId: input.agentTurnId ?? null,
-        submissionId: input.submissionId ?? null,
         runtimeSequence: input.runtimeSequence ?? null,
         createdAt: consumedAt
       })
@@ -489,7 +480,6 @@ export class LocalThreadHostService {
 
     return this.addMessage(normalizedThreadId, 'user', normalizedText, normalizedRunId, null, {
       agentTurnId: input.agentTurnId ?? null,
-      submissionId: input.submissionId ?? null,
       runtimeSequence: input.runtimeSequence ?? null,
       createdAt: consumedAt
     })
@@ -641,17 +631,6 @@ export class LocalThreadHostService {
           left.created_at.localeCompare(right.created_at) || compareExternalIds(left.id, right.id)
       )
 
-    if (candidate.role === 'user' && candidate.message_kind === 'chat' && candidate.submission_id) {
-      return (
-        messages.find(
-          (message) =>
-            message.role === 'user' &&
-            message.message_kind === 'chat' &&
-            message.submission_id === candidate.submission_id
-        ) ?? null
-      )
-    }
-
     if (candidate.role === 'user' && candidate.message_kind === 'chat' && candidate.agent_run_id) {
       return (
         messages.find(
@@ -738,7 +717,6 @@ export class LocalThreadHostService {
       content,
       content_json: serializeChatMessageContent(contentJson) ?? null,
       agent_run_id: String(agentRunId ?? '').trim() || null,
-      submission_id: String(options?.submissionId ?? '').trim() || null,
       agent_entry_id: null,
       agent_turn_id: String(options?.agentTurnId ?? '').trim() || null,
       tool_call_id: String(options?.toolCallId ?? '').trim() || null,

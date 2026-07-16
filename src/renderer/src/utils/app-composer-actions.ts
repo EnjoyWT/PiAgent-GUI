@@ -26,7 +26,6 @@ import {
   toPlainContentJson
 } from './app-chat-helpers'
 import {
-  createSubmissionId,
   submitLocalMessageToGateway,
   type ThreadQueueController
 } from './app-queue-dispatcher'
@@ -92,7 +91,6 @@ type ComposerActionsOptions = {
       promptOptions?: {
         streamingBehavior?: 'steer' | 'followUp'
         images?: ChatImageBlock[]
-        submissionId?: string
       }
       contentJson?: ChatMessageContent | null
     }
@@ -688,11 +686,9 @@ export const useComposerActions = (options: ComposerActionsOptions): ComposerAct
       msg.retryCandidate = true
       msg.agentRunId = undefined
       msg.runtimeSequence = null
-      msg.submissionId = createSubmissionId()
       if (msg.id) await window.api.coreV2.localMessages.prepareForRetry(msg.id)
       if (msg.id) {
         await window.api.coreV2.localMessages.updateRuntimeLink(msg.id, {
-          submissionId: msg.submissionId
         })
       }
 
@@ -713,7 +709,6 @@ export const useComposerActions = (options: ComposerActionsOptions): ComposerAct
         text: edited,
         messageId: msg.id ?? null,
         images: editedImages,
-        submissionId: msg.submissionId
       })
       await options.loadLatestThreadWindow(threadId, 'merge-latest')
     } catch (err) {
@@ -846,11 +841,9 @@ export const useComposerActions = (options: ComposerActionsOptions): ComposerAct
       msg.retryCandidate = true
       msg.agentRunId = undefined
       msg.runtimeSequence = null
-      msg.submissionId = createSubmissionId()
       if (msg.id) await window.api.coreV2.localMessages.prepareForRetry(msg.id)
       if (msg.id) {
         await window.api.coreV2.localMessages.updateRuntimeLink(msg.id, {
-          submissionId: msg.submissionId
         })
       }
 
@@ -871,7 +864,6 @@ export const useComposerActions = (options: ComposerActionsOptions): ComposerAct
         text: payload.content,
         messageId: msg.id ?? null,
         images: options.currentModelSupportsImageInput.value ? images : [],
-        submissionId: msg.submissionId
       })
       await options.loadLatestThreadWindow(threadId, 'merge-latest')
     } catch (err) {

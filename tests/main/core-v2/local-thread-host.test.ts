@@ -127,11 +127,9 @@ test('local thread host writes and deletes messages through core-v2 and projecti
   })
 
   const message = host.addMessage(thread.id, 'user', 'hello', null, null, {
-    submissionId: 'sub-1'
   })
   const updated = host.updateUserMessageRuntimeLink(message.id, {
     agentRunId: 'run-1',
-    submissionId: 'sub-1',
     runtimeSequence: 3
   })
 
@@ -166,10 +164,8 @@ test('local thread host reuses the same user row for repeated submission persist
     title: 'newchat'
   })
   const first = host.addMessage(thread.id, 'user', 'hello', null, null, {
-    submissionId: 'sub-dup'
   })
   const second = host.addMessage(thread.id, 'user', 'hello', 'run-1', null, {
-    submissionId: 'sub-dup',
     agentTurnId: 'turn-1',
     runtimeSequence: 19,
     createdAt: '2026-04-20T09:43:00.363Z'
@@ -205,14 +201,12 @@ test('local thread host persists consumed user turn identity at runtime fact sou
     title: 'newchat'
   })
   const first = host.addMessage(thread.id, 'user', 'hello', null, null, {
-    submissionId: 'sub-turn'
   })
   const consumed = host.ensureConsumedUserMessage({
     threadId: thread.id,
     text: 'hello',
     agentRunId: 'run-turn',
     agentTurnId: 'turn-consumed',
-    submissionId: 'sub-turn',
     runtimeSequence: 3,
     consumedAt: '2026-04-20T09:43:00.363Z'
   })

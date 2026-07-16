@@ -21,7 +21,6 @@ test('ContextCaptureService captures consumed user message and finalized run sum
       content: 'Fix the failing tests',
       content_json: null,
       agent_run_id: 'run-1',
-      submission_id: 'sub-1',
       agent_entry_id: null,
       agent_turn_id: null,
       tool_call_id: null,

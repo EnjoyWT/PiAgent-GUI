@@ -564,7 +564,6 @@ const api = {
             | 'questionnaire_question'
             | 'questionnaire_answer'
           includeInAgentContext?: boolean
-          submissionId?: string | null
           agentTurnId?: string | null
           toolCallId?: string
           stepIndex?: number
@@ -595,7 +594,6 @@ const api = {
         id: string,
         fields: {
           agentRunId?: string | null
-          submissionId?: string | null
           agentTurnId?: string | null
           runtimeSequence?: number | null
           createdAt?: string | number | Date | null

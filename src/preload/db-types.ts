@@ -41,7 +41,6 @@ export interface MessageRow {
   content: string
   content_json: string | null
   agent_run_id: string | null
-  submission_id: string | null
   agent_entry_id: string | null
   agent_turn_id: string | null
   tool_call_id: string | null

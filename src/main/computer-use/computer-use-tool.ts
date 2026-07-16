@@ -1,4 +1,4 @@
-import type { ToolDefinition } from '@enjoywt/pi-coding-agent'
+import type { ToolDefinition } from '@earendil-works/pi-coding-agent'
 import { Type } from '@sinclair/typebox'
 import { getComputerUseService, type ComputerUseService } from './computer-use-service.ts'
 import type { ComputerUseAction, ComputerUseRequest } from './computer-use-types.ts'

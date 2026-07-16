@@ -136,12 +136,6 @@ const extractMessageImages = (
   return (content?.blocks ?? []).filter((block): block is ChatImageBlock => block.type === 'image')
 }
 
-const extractMessageSubmissionId = (
-  message: ConversationMessage | null | undefined
-): string | null => {
-  return parseLocalThreadMessageMeta(message).submissionId ?? null
-}
-
 const normalizeContextDetailText = (value: string | null | undefined): string =>
   String(value ?? '')
     .replace(/\r\n/g, '\n')
@@ -434,13 +428,11 @@ export class LocalRuntimeHostService {
         ) ??
         conversationMessages[conversationMessages.length - 1] ??
         null
-      const submissionId = extractMessageSubmissionId(message) ?? undefined
       return {
         id: run.id,
         threadId,
         delivery: index === 0 ? 'steer' : 'followUp',
         text: message?.text?.trim() || '',
-        submissionId,
         createdAt: Date.parse(run.startedAt) || Date.now(),
         submittedAt: Date.parse(run.startedAt) || Date.now(),
         images: extractMessageImages(message)

@@ -691,7 +691,6 @@ export const buildChatStateFromThreadProjection = (
         messageKind: message.messageKind,
         includeInAgentContext: message.includeInAgentContext ?? true,
         agentEntryId: message.agentEntryId ?? undefined,
-        submissionId: message.submissionId ?? undefined,
         content: message.content,
         blocks: message.blocks,
         isPending: message.isPending,

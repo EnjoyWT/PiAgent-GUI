@@ -1,4 +1,4 @@
-import type { Api, Message, Usage } from '@enjoywt/pi-ai'
+import type { Api, Message, Usage } from '@earendil-works/pi-ai/compat'
 import type { AgentRunProjection } from '@shared/agent-runtime'
 import type {
   ContextEngineConfig,

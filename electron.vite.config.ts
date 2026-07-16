@@ -17,7 +17,11 @@ export default defineConfig({
         }
       },
       externalizeDeps: {
-        exclude: ['@enjoywt/pi-agent-core', '@enjoywt/pi-ai', '@enjoywt/pi-coding-agent']
+        exclude: [
+          '@earendil-works/pi-agent-core',
+          '@earendil-works/pi-ai',
+          '@earendil-works/pi-coding-agent'
+        ]
       }
     },
     resolve: {

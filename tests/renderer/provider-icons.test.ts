@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { getProviders } from '@enjoywt/pi-ai'
+import { getProviders } from '@earendil-works/pi-ai'
 import { listDefaultProviderDefinitions } from '../../src/shared/providers/registry.ts'
 import {
   getProviderIconKey,

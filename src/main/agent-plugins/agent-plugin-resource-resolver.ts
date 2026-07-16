@@ -1,8 +1,8 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type { ExtensionFactory, ToolDefinition } from '@enjoywt/pi-coding-agent'
-import type { AgentToolResult } from '@enjoywt/pi-agent-core'
+import type { ExtensionFactory, ToolDefinition } from '@earendil-works/pi-coding-agent'
+import type { AgentToolResult } from '@earendil-works/pi-agent-core'
 import { getConfigDb } from '../db/config-db.ts'
 import { getDefaultPluginsDir } from '../paths.ts'
 import {

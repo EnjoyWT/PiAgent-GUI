@@ -1,7 +1,7 @@
 import { ipcMain, shell } from 'electron'
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import path from 'node:path'
-import { loadSkills, type ResourceDiagnostic } from '@enjoywt/pi-coding-agent'
+import { loadSkills, type ResourceDiagnostic } from '@earendil-works/pi-coding-agent'
 import { getAgentPluginStateService } from '../agent-plugins/agent-plugin-state-service-singleton'
 import { getSetting, setSetting } from '../db/config-db'
 import { getDefaultSharedSkillsDir, getDefaultSkillsDir, getPreferredAppConfigDir } from '../paths'

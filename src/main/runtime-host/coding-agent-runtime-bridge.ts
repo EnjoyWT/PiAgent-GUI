@@ -8,13 +8,12 @@ import {
   SettingsManager,
   type ToolDefinition,
   createAgentSession
-} from '@enjoywt/pi-coding-agent'
-import { getModels, type Api, type KnownProvider } from '@enjoywt/pi-ai'
+} from '@earendil-works/pi-coding-agent'
+import { getModels, type Api, type KnownProvider } from '@earendil-works/pi-ai/compat'
 import type {
   AgentAppEvent,
   AgentRunProjection,
-  AgentTurnProjection,
-  NormalizedAgentRuntimeEvent
+  AgentTurnProjection
 } from '../../shared/agent-runtime.ts'
 import type { ConversationEventRow } from '../../preload/db-types.ts'
 import type { ChatImageBlock, ChatMessageContent } from '../../shared/chat-content.ts'
@@ -133,7 +132,6 @@ export type QueueStreamingPromptInput = {
   threadId: string
   text: string
   messageId?: string | null
-  submissionId?: string | null
   streamingBehavior: 'steer'
   images?: ChatImageBlock[]
 }
@@ -336,7 +334,7 @@ const providerSettingsApi = (settings: ReturnType<typeof normalizeProviderSettin
 
 const builtInProviderApi = (runtimeProvider: string): Api | null => {
   try {
-    return asApi(getModels(runtimeProvider as KnownProvider)[0]?.api)
+    return asApi((getModels(runtimeProvider as KnownProvider as any) as Array<{ api?: unknown }>)[0]?.api)
   } catch {
     return null
   }
@@ -622,7 +620,7 @@ export class CodingAgentRuntimeBridge {
     const images = input.images ?? []
     if (!text && images.length === 0) return false
 
-    const traceId = String(input.messageId ?? input.submissionId ?? '').trim()
+    const traceId = String(input.messageId ?? '').trim()
     const queuedRun = this.resolveQueuedPromptRun(resolvedConversationId, traceId)
     if (this.shouldCancelRunExecution(queuedRun)) return false
     this.markRunRunning(queuedRun)
@@ -634,7 +632,6 @@ export class CodingAgentRuntimeBridge {
       {
         text,
         images,
-        submissionId: input.submissionId ?? null,
         streamingBehavior: input.streamingBehavior
       },
       queuedRun
@@ -854,7 +851,6 @@ export class CodingAgentRuntimeBridge {
     input: {
       text: string
       images: ChatImageBlock[]
-      submissionId?: string | null
       streamingBehavior: 'steer'
     },
     queuedRun?: AgentRun | null
@@ -873,7 +869,6 @@ export class CodingAgentRuntimeBridge {
 
       const promptOptions = this.buildPromptOptionsFromParts({
         images: materializedImages,
-        submissionId: input.submissionId,
         streamingBehavior: input.streamingBehavior
       })
       const session = runtime.session as StreamingPromptSession
@@ -1242,8 +1237,8 @@ export class CodingAgentRuntimeBridge {
         await this.contextHostService.onConsumedUserMessage(message)
       },
       onEventsFlushed: async (rows) => this.persistRuntimeEvents(conversation.id, rows),
-      resolveCanonicalRunId: (agentRunId, event) =>
-        this.resolveCoreRunId(conversation.id, agentRunId, event),
+      resolveCanonicalRunId: (agentRunId) =>
+        this.resolveCoreRunId(conversation.id, agentRunId),
       onAppEvent: (appEvent) => {
         const mappedAppEvent = this.mapAppEventRunId(conversation.id, appEvent)
         if (!mappedAppEvent) return
@@ -1497,7 +1492,6 @@ export class CodingAgentRuntimeBridge {
       agentTurnId?: string | null
       consumedAt: number
       runtimeSequence: number
-      submissionId?: string | null
     }
   ) {
     if (payload.threadId !== interactionThreadId) return null
@@ -1512,7 +1506,6 @@ export class CodingAgentRuntimeBridge {
       agentTurnId: payload.agentTurnId ?? null,
       consumedAt: payload.consumedAt,
       runtimeSequence: payload.runtimeSequence,
-      submissionId: payload.submissionId ?? null
     })
   }
 
@@ -1556,21 +1549,17 @@ export class CodingAgentRuntimeBridge {
     const images = await Promise.all(
       this.extractImageBlocks(message).map((image) => materializeImageBlockForRuntime(image))
     )
-    const submissionId = this.extractPromptMessageMeta(message).submissionId
-    return this.buildPromptOptionsFromParts({ images, submissionId })
+    return this.buildPromptOptionsFromParts({ images })
   }
 
   private buildPromptOptionsFromParts(input: {
     images?: unknown[]
-    submissionId?: string | null
     streamingBehavior?: 'steer' | 'followUp'
   }): Record<string, unknown> | undefined {
     const images = input.images ?? []
-    const submissionId = String(input.submissionId ?? '').trim()
-    if (images.length === 0 && !submissionId && !input.streamingBehavior) return undefined
+    if (images.length === 0 && !input.streamingBehavior) return undefined
     return {
       ...(images.length > 0 ? { images } : {}),
-      ...(submissionId ? { submissionId } : {}),
       ...(input.streamingBehavior ? { streamingBehavior: input.streamingBehavior } : {})
     }
   }
@@ -1589,12 +1578,10 @@ export class CodingAgentRuntimeBridge {
   }
 
   private extractPromptMessageMeta(message: ConversationMessage | null | undefined): {
-    submissionId: string | null
     content: ChatMessageContent | null
   } {
     const meta = parseLocalThreadMessageMeta(message)
     return {
-      submissionId: meta.submissionId ?? null,
       content: meta.content
     }
   }
@@ -2279,7 +2266,6 @@ export class CodingAgentRuntimeBridge {
           messageKind: 'chat',
           includeInAgentContext: true,
           agentRunId: requestedRun.id,
-          submissionId: null,
           agentEntryId: null,
           agentTurnId: null,
           toolCallId: null,
@@ -2381,25 +2367,9 @@ export class CodingAgentRuntimeBridge {
     else this.queuedRunsByConversationId.delete(conversationId)
   }
 
-  private takeQueuedRunForRuntimeEvent(
-    conversationId: string,
-    event?: NormalizedAgentRuntimeEvent
-  ): AgentRun | null {
+  private takeQueuedRunForRuntimeEvent(conversationId: string): AgentRun | null {
     const queuedRuns = this.queuedRunsByConversationId.get(conversationId)
     if (!queuedRuns || queuedRuns.length === 0) return null
-
-    const payload = asRecord(event?.payload)
-    const submissionId =
-      typeof payload?.submissionId === 'string' ? payload.submissionId.trim() : ''
-    if (submissionId) {
-      const index = queuedRuns.findIndex((run) => run.traceId === submissionId)
-      if (index >= 0) {
-        const [run] = queuedRuns.splice(index, 1)
-        if (queuedRuns.length === 0) this.queuedRunsByConversationId.delete(conversationId)
-        return run ?? null
-      }
-      return null
-    }
 
     const activeRun = this.activeRunByConversationId.get(conversationId)
     if (activeRun) return null
@@ -2411,12 +2381,11 @@ export class CodingAgentRuntimeBridge {
 
   private resolveCoreRunId(
     conversationId: string,
-    runtimeRunId: string,
-    event?: NormalizedAgentRuntimeEvent
+    runtimeRunId: string
   ): string {
     const existing = this.runtimeRunIdToCoreRunId.get(runtimeRunId)
     if (existing) return existing
-    const queuedRun = this.takeQueuedRunForRuntimeEvent(conversationId, event)
+    const queuedRun = this.takeQueuedRunForRuntimeEvent(conversationId)
     if (queuedRun) {
       this.runtimeRunIdToCoreRunId.set(runtimeRunId, queuedRun.id)
       return queuedRun.id

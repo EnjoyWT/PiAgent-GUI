@@ -211,7 +211,7 @@ export async function createTools({ plugin }) {
 }
 ```
 
-Each tool must follow the runtime `ToolDefinition` contract used by `@enjoywt/pi-coding-agent`.
+Each tool must follow the runtime `ToolDefinition` contract used by `@earendil-works/pi-coding-agent`.
 PiAgent namespaces tool names as:
 
 ```text

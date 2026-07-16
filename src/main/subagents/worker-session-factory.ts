@@ -7,7 +7,7 @@ import {
   type CreateAgentSessionOptions,
   type CreateAgentSessionResult,
   type ResourceLoader
-} from '@enjoywt/pi-coding-agent'
+} from '@earendil-works/pi-coding-agent'
 import type {
   StartWorkerAttemptInput,
   WorkerResultEnvelope,

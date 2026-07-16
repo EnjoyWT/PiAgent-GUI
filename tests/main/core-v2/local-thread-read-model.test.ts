@@ -231,7 +231,6 @@ test('local thread read model hides synthetic system followup user prompts', () 
         messageKind: 'chat',
         includeInAgentContext: true,
         agentRunId: run.id,
-        submissionId: null,
         agentEntryId: null,
         agentTurnId: 'turn-system-followup',
         toolCallId: null,

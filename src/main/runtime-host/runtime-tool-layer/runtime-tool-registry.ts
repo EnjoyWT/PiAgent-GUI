@@ -1,4 +1,4 @@
-import type { ToolDefinition } from '@enjoywt/pi-coding-agent'
+import type { ToolDefinition } from '@earendil-works/pi-coding-agent'
 import type { ConversationSourceKind } from '../../core-v2/domain.ts'
 
 export type RuntimeToolRegistrySource =

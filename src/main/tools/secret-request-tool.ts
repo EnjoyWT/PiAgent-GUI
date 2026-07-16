@@ -1,4 +1,4 @@
-import type { ToolDefinition } from '@enjoywt/pi-coding-agent'
+import type { ToolDefinition } from '@earendil-works/pi-coding-agent'
 import {
   SECRET_REQUEST_ANSWER_API_PATH,
   SECRET_REQUEST_TOOL_NAME,

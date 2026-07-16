@@ -475,7 +475,6 @@ test('runtime bridge passes streaming behavior when queueing into an active sess
     conversationId: resolved.conversation.id,
     threadId: 'queue-streaming-thread',
     text: 'steer now',
-    submissionId: 'submission-steer',
     streamingBehavior: 'steer',
     images: []
   })
@@ -486,7 +485,6 @@ test('runtime bridge passes streaming behavior when queueing into an active sess
   assert.equal(prompts.length, 1)
   assert.equal(prompts[0]?.text, 'steer now')
   assert.equal(prompts[0]?.options?.streamingBehavior, 'steer')
-  assert.equal(prompts[0]?.options?.submissionId, 'submission-steer')
 })
 
 test('runtime bridge does not submit a queued streaming prompt after hard dispose', async () => {
@@ -531,7 +529,6 @@ test('runtime bridge does not submit a queued streaming prompt after hard dispos
     conversationId: resolved.conversation.id,
     threadId: 'queue-abort-thread',
     text: 'do not submit after dispose',
-    submissionId: 'submission-abort-race',
     streamingBehavior: 'steer',
     images: []
   })
@@ -599,7 +596,6 @@ test('runtime bridge persists finalized queued streaming prompts through a core 
     threadId: 'queued-finalize-thread',
     text: 'queued prompt',
     messageId: 'queued-message-id',
-    submissionId: 'queued-submission',
     streamingBehavior: 'steer',
     images: []
   })
@@ -704,7 +700,6 @@ test('runtime bridge suppresses synthetic system followup user app events', () =
     parentEventId: null,
     sequence: 1,
     agentMessageId: 'message-1',
-    submissionId: null,
     message: {
       agentMessageId: 'message-1',
       agentTurnId: 'turn-1',
@@ -953,7 +948,6 @@ test('runtime bridge does not persist synthetic system followup user prompts', a
       agentTurnId: 'turn-1',
       consumedAt: Date.parse('2026-04-20T08:01:00.000Z'),
       runtimeSequence: 1,
-      submissionId: null
     }
   )
 

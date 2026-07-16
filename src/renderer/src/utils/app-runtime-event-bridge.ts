@@ -40,13 +40,11 @@ type RuntimeBinding = {
 
 type ThreadScopedAgentAppEvent = AgentAppEvent & {
   __chatThreadId?: string
-  queueItemId?: string | null
 }
 
 type PersistRuntimeUserMessageOptions = {
   blocks: ChatContentBlock[]
   agentRunId?: string | null
-  submissionId?: string | null
   agentTurnId?: string | null
   runtimeSequence?: number | null
   createdAt?: string | number | Date | null
@@ -75,15 +73,11 @@ type RuntimeEventBridgeOptions = {
   ) => void
   ensureQueueController: (threadId: string) => ThreadQueueController
   ensureMessageBuffer: (threadId: string) => ChatMessage[]
-  removeRuntimeQueueItemById: (
-    controller: ThreadQueueController,
-    queueItemId?: string | null
-  ) => PendingQueueItem | null
-  removeRuntimeQueueItemBySubmissionId: (
-    controller: ThreadQueueController,
-    submissionId?: string | null
-  ) => PendingQueueItem | null
   removeQueueItem: (controller: ThreadQueueController, itemId: string) => void
+  removeRuntimeQueueItemByText: (
+    controller: ThreadQueueController,
+    text: string
+  ) => PendingQueueItem | null
   getAgentRunMap: (threadId: string) => Map<string, AgentRun>
   getActiveRun: (threadId: string) => AgentRun | null
   setActiveRun: (threadId: string, run: AgentRun) => void
@@ -133,12 +127,6 @@ const logRuntimeUiDebug = (label: string, payload: unknown): void => {
   console.debug(`[piagent-runtime-ui] ${label}`, payload)
 }
 
-const getQueueItemId = (event: ThreadScopedAgentAppEvent): string | null => {
-  return typeof event.queueItemId === 'string' && event.queueItemId.trim()
-    ? event.queueItemId
-    : null
-}
-
 export const createRuntimeEventBridge = (options: RuntimeEventBridgeOptions) => {
   return async (event: ThreadScopedAgentAppEvent): Promise<void> => {
     const eventThreadId = typeof event.__chatThreadId === 'string' ? event.__chatThreadId : null
@@ -174,20 +162,13 @@ export const createRuntimeEventBridge = (options: RuntimeEventBridgeOptions) => 
     options.scheduleRuntimeDebugRefresh(threadId)
 
     if (event.type === 'agent.queue.consumed') {
-      const queueItemId = getQueueItemId(event)
-      const submissionId = event.submissionId ?? null
-      const runtimeItem =
-        options.removeRuntimeQueueItemById(controller, queueItemId) ??
-        options.removeRuntimeQueueItemBySubmissionId(controller, submissionId)
-      if (queueItemId) options.removeQueueItem(controller, queueItemId)
-
+      const runtimeItem = options.removeRuntimeQueueItemByText(controller, event.text)
       const text = event.text || runtimeItem?.text || ''
       const isAutomationPrompt = isAutomationPromptText(text)
       const list = options.ensureMessageBuffer(threadId)
       const existingAgentMsg = findAgentUserMessage(
         list,
         text,
-        submissionId,
         event.agentRunId,
         event.agentTurnId
       )
@@ -224,7 +205,6 @@ export const createRuntimeEventBridge = (options: RuntimeEventBridgeOptions) => 
       userMsg.messageKind = isAutomationPrompt ? 'automation' : 'chat'
       userMsg.includeInAgentContext = !isAutomationPrompt
       userMsg.retryCandidate = false
-      userMsg.submissionId = submissionId ?? userMsg.submissionId
       userMsg.runtimeSequence = event.sequence
       userMsg.agentRunId = event.agentRunId ?? undefined
       userMsg.agentTurnId = event.agentTurnId ?? undefined
@@ -233,9 +213,7 @@ export const createRuntimeEventBridge = (options: RuntimeEventBridgeOptions) => 
         threadId,
         'debugUiUserQueueConsumed',
         {
-          submissionId,
-          queueItemId,
-          agentRunId: event.agentRunId ?? null,
+                    agentRunId: event.agentRunId ?? null,
           agentTurnId: event.agentTurnId ?? null,
           runtimeSequence: event.sequence,
           matchedExisting: Boolean(existingAgentMsg),
@@ -256,7 +234,6 @@ export const createRuntimeEventBridge = (options: RuntimeEventBridgeOptions) => 
         await options.persistRuntimeUserMessage(threadId, userMsg, {
           blocks,
           agentRunId: event.agentRunId,
-          submissionId,
           agentTurnId: event.agentTurnId,
           runtimeSequence: event.sequence,
           createdAt: event.timestamp
@@ -268,20 +245,13 @@ export const createRuntimeEventBridge = (options: RuntimeEventBridgeOptions) => 
     }
 
     if (event.type === 'agent.message.started' && event.message.role === 'user') {
-      const queueItemId = getQueueItemId(event)
-      const submissionId = event.submissionId ?? null
-      if (queueItemId) options.removeQueueItem(controller, queueItemId)
-      const runtimeItem =
-        options.removeRuntimeQueueItemById(controller, queueItemId) ??
-        options.removeRuntimeQueueItemBySubmissionId(controller, submissionId)
-
+      const runtimeItem = options.removeRuntimeQueueItemByText(controller, event.message.text)
       const list = options.ensureMessageBuffer(threadId)
       const isAutomationPrompt = isAutomationPromptText(event.message.text)
 
       const existingAgentMsg = findAgentUserMessage(
         list,
         event.message.text,
-        submissionId,
         event.agentRunId,
         event.agentTurnId
       )
@@ -322,7 +292,6 @@ export const createRuntimeEventBridge = (options: RuntimeEventBridgeOptions) => 
       userMsg.blocks = blocks
       userMsg.messageKind = isAutomationPrompt ? 'automation' : 'chat'
       userMsg.includeInAgentContext = !isAutomationPrompt
-      userMsg.submissionId = submissionId ?? userMsg.submissionId
       userMsg.agentRunId = event.agentRunId ?? undefined
       userMsg.agentTurnId = event.agentTurnId ?? undefined
       userMsg.runtimeSequence = event.sequence
@@ -332,9 +301,7 @@ export const createRuntimeEventBridge = (options: RuntimeEventBridgeOptions) => 
         threadId,
         'debugUiUserMessageStarted',
         {
-          submissionId,
-          queueItemId,
-          agentRunId: event.agentRunId ?? null,
+                    agentRunId: event.agentRunId ?? null,
           agentTurnId: event.agentTurnId ?? null,
           runtimeSequence: event.sequence,
           matchedExisting: Boolean(existingAgentMsg),
@@ -355,7 +322,6 @@ export const createRuntimeEventBridge = (options: RuntimeEventBridgeOptions) => 
         await options.persistRuntimeUserMessage(threadId, userMsg, {
           blocks,
           agentRunId: event.agentRunId,
-          submissionId,
           agentTurnId: event.agentTurnId,
           runtimeSequence: event.sequence,
           createdAt: event.timestamp

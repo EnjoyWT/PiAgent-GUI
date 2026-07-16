@@ -90,7 +90,6 @@ const createCoreV2Fixture = (dbPath: string): void => {
       payload: {
         rawType: 'message_start',
         role: 'user',
-        submissionId: 'sub-1',
         message: {
           content: [{ type: 'text', text: 'hello core-v2' }]
         }

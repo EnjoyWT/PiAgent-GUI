@@ -61,7 +61,6 @@ test('prefers semantic submission identity over persisted ids for user chat mess
     id: 'msg-2',
     role: 'user',
     content: '你好呀',
-    submissionId: 'submission-1'
   }
 
   assert.equal(getMessageIdentityKey(message), 'submission:user:chat:submission-1')

@@ -11,8 +11,8 @@ import {
   createReadToolDefinition,
   createWriteTool,
   createWriteToolDefinition
-} from '@enjoywt/pi-coding-agent'
-import type { Skill, ToolDefinition } from '@enjoywt/pi-coding-agent'
+} from '@earendil-works/pi-coding-agent'
+import type { Skill, ToolDefinition } from '@earendil-works/pi-coding-agent'
 import { createComputerUseTool } from '../../computer-use/computer-use-tool.ts'
 import { mcpRuntimeManager, type McpRuntimeServerConfig } from '../../mcp/mcp-runtime-manager.ts'
 import { createWebSearchTool } from '../../tools/web-search-tool.ts'

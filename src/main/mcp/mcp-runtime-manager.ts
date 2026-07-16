@@ -1,8 +1,8 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
-import type { ToolDefinition } from '@enjoywt/pi-coding-agent'
-import type { AgentToolResult } from '@enjoywt/pi-agent-core'
+import type { ToolDefinition } from '@earendil-works/pi-coding-agent'
+import type { AgentToolResult } from '@earendil-works/pi-agent-core'
 import {
   listEnabledWorkspaceMcpServerIds,
   listMcpServers,

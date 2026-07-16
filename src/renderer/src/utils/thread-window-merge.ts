@@ -72,11 +72,6 @@ export const mergeLatestWindowAuthoritatively = (
       }
     }
 
-    if (message.role === 'user' && message.submissionId) {
-      if (latestPage.some((m) => m.role === 'user' && m.submissionId === message.submissionId)) {
-        return false
-      }
-    }
 
     return true
   })

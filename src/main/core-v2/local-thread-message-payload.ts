@@ -13,7 +13,6 @@ export type LocalThreadMessageMeta = {
   messageKind: AgentThreadMessageProjection['messageKind']
   includeInAgentContext: boolean
   agentRunId?: string | null
-  submissionId?: string | null
   agentEntryId?: string | null
   agentTurnId?: string | null
   toolCallId?: string | null
@@ -71,7 +70,6 @@ export const buildLocalThreadMessagePayload = (row: MessageRow): { localThread: 
     messageKind: row.message_kind,
     includeInAgentContext: Boolean(row.include_in_agent_context),
     agentRunId: row.agent_run_id,
-    submissionId: row.submission_id,
     agentEntryId: row.agent_entry_id,
     agentTurnId: row.agent_turn_id,
     toolCallId: row.tool_call_id,
@@ -94,7 +92,6 @@ export const parseLocalThreadMessageMeta = (
         ? localThread.includeInAgentContext
         : true,
     agentRunId: asString(localThread?.agentRunId).trim() || null,
-    submissionId: asString(localThread?.submissionId).trim() || null,
     agentEntryId: asString(localThread?.agentEntryId).trim() || null,
     agentTurnId: asString(localThread?.agentTurnId).trim() || null,
     toolCallId: asString(localThread?.toolCallId).trim() || null,

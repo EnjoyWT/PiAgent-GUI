@@ -90,7 +90,6 @@ type EmbeddedGatewayDeps = {
       threadId: string
       text: string
       messageId?: string | null
-      submissionId?: string | null
       streamingBehavior: 'steer'
       images?: ChatImageBlock[]
     }): boolean
@@ -120,7 +119,6 @@ export type SubmitDesktopLocalMessageInput = {
   threadId: string
   text: string
   messageId?: string | null
-  submissionId?: string | null
   receivedAt?: string | number | Date | null
   images?: ChatImageBlock[]
   streamingBehavior?: 'steer' | 'followUp'
@@ -476,9 +474,7 @@ export class EmbeddedGatewayService {
       throw new Error('message text or image is required')
 
     const externalMessageId =
-      String(input.messageId ?? '').trim() ||
-      String(input.submissionId ?? '').trim() ||
-      `desktop-local:${threadId}:${Date.now()}`
+      String(input.messageId ?? '').trim() || `desktop-local:${threadId}:${Date.now()}`
     const receivedAt = this.normalizeReceivedAt(input.receivedAt)
     const envelope: InboundEnvelope = {
       envelopeId: externalMessageId,
@@ -497,7 +493,6 @@ export class EmbeddedGatewayService {
     const queued = this.tryQueueDesktopSteeringPrompt(envelope, {
       threadId,
       text,
-      submissionId: String(input.submissionId ?? '').trim() || null,
       images: input.images ?? [],
       streamingBehavior: input.streamingBehavior
     })
@@ -511,7 +506,6 @@ export class EmbeddedGatewayService {
     input: {
       threadId: string
       text: string
-      submissionId?: string | null
       images: ChatImageBlock[]
       streamingBehavior?: SubmitDesktopLocalMessageInput['streamingBehavior']
     }
@@ -535,7 +529,6 @@ export class EmbeddedGatewayService {
       threadId: input.threadId,
       text: input.text,
       messageId: envelope.externalMessageId,
-      submissionId: input.submissionId ?? null,
       streamingBehavior: 'steer',
       images: input.images.map((image) => ({ ...image }))
     })

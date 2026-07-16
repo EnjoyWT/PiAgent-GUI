@@ -1,5 +1,5 @@
-import { getModels, getProviders } from '@enjoywt/pi-ai'
-import type { KnownProvider } from '@enjoywt/pi-ai'
+import { getModels, getProviders } from '@earendil-works/pi-ai/compat'
+import type { KnownProvider } from '@earendil-works/pi-ai/compat'
 import type { ProviderAdapter } from './types.ts'
 import { anthropicAdapter } from './adapters/anthropic.ts'
 import { createBuiltInProviderAdapter, type DefaultProviderDefinition } from './adapters/builtin.ts'
@@ -185,7 +185,7 @@ const firstModelBaseUrl = (providerId: string): string => {
   const override = getProviderDefaultBaseUrlOverride(providerId)
   if (override) return override
   try {
-    return String(getModels(providerId as KnownProvider)[0]?.baseUrl ?? '').trim()
+    return String(getModels(providerId as KnownProvider as any)[0]?.baseUrl ?? '').trim()
   } catch {
     return ''
   }

@@ -34,7 +34,6 @@ type RuntimeAdapterOptions = {
     agentTurnId?: string | null
     consumedAt: number
     runtimeSequence: number
-    submissionId?: string | null
   }) => MessageRow | null | Promise<MessageRow | null>
 }
 

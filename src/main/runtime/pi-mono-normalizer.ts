@@ -42,18 +42,6 @@ const getRole = (message: unknown): string => {
   return asString(record?.role) || 'assistant'
 }
 
-const getPromptOptions = (message: unknown): JsonRecord | null => {
-  const record = asRecord(message)
-  return asRecord(record?.options)
-}
-
-const getSubmissionId = (value: unknown): string => {
-  const record = asRecord(value)
-  const direct = asString(record?.submissionId).trim()
-  if (direct) return direct
-  return asString(getPromptOptions(value)?.submissionId).trim()
-}
-
 const getAssistantEventType = (value: unknown): string => {
   const record = asRecord(value)
   return asString(record?.type)
@@ -499,9 +487,7 @@ export class PiMonoNormalizer {
       'agentQueueConsumed',
       {
         rawType: 'queue_consumed',
-        queueItemId: asString(raw?.queueItemId),
         delivery: asString(raw?.delivery) === 'steer' ? 'steer' : 'followUp',
-        submissionId: getSubmissionId(raw?.message) || null,
         message: raw?.message
       },
       rawEvent,
@@ -569,8 +555,7 @@ export class PiMonoNormalizer {
         rawType: 'message_start',
         role,
         message,
-        retrying: this.retryPending,
-        submissionId: getSubmissionId(message) || null
+        retrying: this.retryPending
       },
       rawEvent,
       {
@@ -766,8 +751,7 @@ export class PiMonoNormalizer {
       {
         rawType: 'message_end',
         role,
-        message,
-        submissionId: getSubmissionId(message) || null
+        message
       },
       rawEvent,
       {

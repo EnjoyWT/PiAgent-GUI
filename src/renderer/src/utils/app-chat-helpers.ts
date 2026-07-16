@@ -83,7 +83,6 @@ export const toPendingRuntimeQueueItem = (item: AgentSubmittedQueueItem): Pendin
   images: item.images?.map((image) => ({ ...image })),
   createdAt: item.createdAt,
   status: 'submitted',
-  submissionId: item.submissionId,
   submittedAt: item.submittedAt,
   delivery: item.delivery,
   runtimeText: item.text
@@ -105,17 +104,9 @@ export const shouldAppendConsumedUserMessage = (list: ChatMessage[], text: strin
 export const findAgentUserMessage = (
   list: ChatMessage[],
   text: string,
-  submissionId?: string | null,
   agentRunId?: string | null,
   agentTurnId?: string | null
 ): ChatMessage | null => {
-  const normalizedSubmissionId = String(submissionId ?? '').trim()
-  if (normalizedSubmissionId) {
-    const exact = list.find(
-      (message) => message.role === 'user' && message.submissionId === normalizedSubmissionId
-    )
-    if (exact) return exact
-  }
   const normalized = normalizeQueueText(text)
   if (!normalized) return null
   for (let index = list.length - 1; index >= 0; index -= 1) {
@@ -230,7 +221,6 @@ export type DebugMessageSummary = {
   content: string
   createdAt: string | null
   runtimeSequence: number | null
-  submissionId: string | null
   agentRunId: string | null
   agentTurnId: string | null
   isPending: boolean
@@ -250,7 +240,6 @@ export const summarizeDebugMessage = (
     .slice(0, 80),
   createdAt: message.createdAt ?? null,
   runtimeSequence: message.runtimeSequence ?? null,
-  submissionId: message.submissionId ?? null,
   agentRunId: message.agentRunId ?? null,
   agentTurnId: message.agentTurnId ?? null,
   isPending: message.isPending ?? false

@@ -1,4 +1,4 @@
-import { complete, type Api, type Context, type Model } from '@enjoywt/pi-ai'
+import { complete, type Api, type Context, type Model } from '@earendil-works/pi-ai/compat'
 import {
   getProviderApiKey,
   listProviderModels,

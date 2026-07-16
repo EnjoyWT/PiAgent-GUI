@@ -3,7 +3,6 @@ import type { ChatMessage } from '../components/chat/types'
 type MessageKeyFields = Pick<
   ChatMessage,
   | 'id'
-  | 'submissionId'
   | 'agentRunId'
   | 'agentTurnId'
   | 'runtimeSequence'
@@ -22,7 +21,6 @@ export const getMessageIdentityKey = (message: MessageKeyFields): string => {
   if (message.agentRunId && message.agentTurnId) {
     return `turn:${message.role}:${kind}:${message.agentRunId}:${message.agentTurnId}`
   }
-  if (message.submissionId) return `submission:${message.role}:${kind}:${message.submissionId}`
   if (message.agentRunId) {
     return `run:${message.role}:${kind}:${message.agentRunId}:${message.runtimeSequence ?? message.createdAt ?? ''}`
   }

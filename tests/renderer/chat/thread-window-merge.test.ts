@@ -147,7 +147,6 @@ test('mergeLatestWindowAuthoritatively replaces retry anchor when persisted meta
     id: 'retry-user-1',
     role: 'user',
     content: '111',
-    submissionId: 'submission-retry-1',
     createdAt: '2026-05-26T10:10:00.000+08:00'
   }
   const retryAnchorAfterRuntime: ChatMessage = {
@@ -182,7 +181,6 @@ test('mergeLatestWindowAuthoritatively drops an unpersisted assistant turn when 
       id: 'user-1',
       role: 'user',
       content: '你好呀',
-      submissionId: 'submission-1',
       createdAt: '2026-04-21T03:12:21.555Z'
     },
     {
@@ -208,7 +206,6 @@ test('mergeLatestWindowAuthoritatively drops stale cache when latest page is emp
   const staleUser: ChatMessage = {
     role: 'user',
     content: '五一上海哪里比较好玩',
-    submissionId: 'stale-submission',
     createdAt: '2026-04-30T10:05:09.796+08:00'
   }
   const staleAssistant: ChatMessage = {

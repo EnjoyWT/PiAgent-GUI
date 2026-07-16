@@ -250,12 +250,6 @@ const extractAssistantStopReasonFromAgentMessage = (message: unknown): string =>
   return asString(record.stopReason).trim()
 }
 
-const getPayloadSubmissionId = (event: NormalizedAgentRuntimeEvent): string | null => {
-  const payload = asRecord((event as { payload?: unknown }).payload)
-  const submissionId = asString(payload?.submissionId).trim()
-  return submissionId || null
-}
-
 const cloneFileChange = (change: ChatFileChange): ChatFileChange => ({ ...change })
 
 const cloneTool = (tool: AgentToolCallProjection): AgentToolCallProjection => ({
@@ -655,7 +649,6 @@ export class RunProjector {
     message.status = 'running'
     message.startedAt = event.timestamp
     message.endedAt = undefined
-    if (event.payload.submissionId) message.submissionId = event.payload.submissionId
     const messageText = extractMessageTextFromAgentMessage(event.payload.message)
     if (messageText && !message.text.trim()) message.text = messageText
     const appEvent = this.buildMessageAppEvent('agent.message.started', event, run, message)
@@ -763,7 +756,6 @@ export class RunProjector {
     )
     message.status = message.status === 'error' ? 'error' : 'done'
     message.endedAt = event.timestamp
-    if (event.payload.submissionId) message.submissionId = event.payload.submissionId
 
     if (message.role === 'assistant') {
       const turn = message.agentTurnId
@@ -1088,7 +1080,6 @@ export class RunProjector {
       role,
       status: 'running',
       text: '',
-      submissionId: null,
       startedAt: timestamp,
       endedAt: undefined,
       origin
@@ -1274,10 +1265,8 @@ export class RunProjector {
     return {
       ...this.buildBaseAppEvent('agent.queue.consumed', event),
       type: 'agent.queue.consumed',
-      queueItemId: event.payload.queueItemId,
       delivery: event.payload.delivery,
       text: extractMessageTextFromAgentMessage(event.payload.message),
-      submissionId: event.payload.submissionId ?? null
     }
   }
 
@@ -1306,7 +1295,6 @@ export class RunProjector {
       agentRunId: run.agentRunId,
       agentMessageId: message.agentMessageId,
       agentTurnId: message.agentTurnId,
-      submissionId: getPayloadSubmissionId(event) ?? message.submissionId ?? null,
       message: cloneMessage(message)
     } as AgentAppEvent
   }

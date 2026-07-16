@@ -190,7 +190,6 @@ export interface AgentMessageProjection {
   role: string
   status: AgentMessageStatus
   text: string
-  submissionId?: string | null
   startedAt: number
   endedAt?: number
   origin: EventOrigin
@@ -228,7 +227,6 @@ export interface AgentThreadMessageProjection {
   agentRunId?: string | null
   agentTurnId?: string | null
   agentEntryId?: string | null
-  submissionId?: string | null
   role: 'user' | 'assistant'
   messageKind?:
     | 'chat'
@@ -292,7 +290,6 @@ export interface AgentSubmittedQueueItem {
   threadId: string
   delivery: 'steer' | 'followUp'
   text: string
-  submissionId?: string
   createdAt: number
   submittedAt: number
   images?: ChatImageBlock[]
@@ -355,10 +352,8 @@ export interface AgentRunAbortedAppEvent extends AgentAppEventBase {
 
 export interface AgentQueueConsumedAppEvent extends AgentAppEventBase {
   type: 'agent.queue.consumed'
-  queueItemId: string
   delivery: 'steer' | 'followUp'
   text: string
-  submissionId?: string | null
 }
 
 export interface AgentTurnStartedAppEvent extends AgentAppEventBase {
@@ -380,8 +375,6 @@ export interface AgentMessageStartedAppEvent extends AgentAppEventBase {
   agentRunId: string
   agentMessageId: string
   agentTurnId: string | null
-  queueItemId?: string | null
-  submissionId?: string | null
   message: AgentMessageProjection
 }
 
@@ -399,7 +392,6 @@ export interface AgentMessageFinishedAppEvent extends AgentAppEventBase {
   agentRunId: string
   agentMessageId: string
   agentTurnId: string | null
-  submissionId?: string | null
   message: AgentMessageProjection
 }
 

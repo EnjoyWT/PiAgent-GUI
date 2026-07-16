@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { PromptBudgetService } from '../../../src/main/context/prompt-budget-service.ts'
 import type { ContextEngineConfig } from '../../../src/main/context/context-types.ts'
-import type { Message } from '@enjoywt/pi-ai'
+import type { Message } from '@earendil-works/pi-ai'
 
 const createConfig = (): ContextEngineConfig => ({
   version: 1,

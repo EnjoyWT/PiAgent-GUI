@@ -1,4 +1,4 @@
-import type { ToolDefinition } from '@enjoywt/pi-coding-agent'
+import type { ToolDefinition } from '@earendil-works/pi-coding-agent'
 import { Type } from '@sinclair/typebox'
 import type { RuntimeSurfaceToolContext } from '../runtime-host/runtime-surface/runtime-surface-types.ts'
 import type { RuntimeUserInteractionController } from '../runtime-host/user-interaction-controller.ts'

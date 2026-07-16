@@ -469,8 +469,7 @@ const {
   canAbortCurrentRun,
   ensureQueueController,
   removeQueueItem,
-  removeRuntimeQueueItemById,
-  removeRuntimeQueueItemBySubmissionId,
+  removeRuntimeQueueItemByText,
   syncRuntimeQueue,
   enqueuePendingMessage,
   dispatchMessageNow,
@@ -884,7 +883,6 @@ const persistRuntimeUserMessage = async (
   options: {
     blocks: ChatContentBlock[]
     agentRunId?: string | null
-    submissionId?: string | null
     agentTurnId?: string | null
     runtimeSequence?: number | null
     createdAt?: string | number | Date | null
@@ -909,7 +907,6 @@ const persistRuntimeUserMessage = async (
       {
         messageKind: message.messageKind ?? 'chat',
         includeInAgentContext: message.includeInAgentContext ?? true,
-        submissionId: options.submissionId ?? null,
         agentTurnId: options.agentTurnId ?? null,
         runtimeSequence: options.runtimeSequence ?? null,
         createdAt: options.createdAt
@@ -922,7 +919,6 @@ const persistRuntimeUserMessage = async (
 
   await window.api.coreV2.localMessages.updateRuntimeLink(message.id, {
     agentRunId: options.agentRunId ?? null,
-    submissionId: options.submissionId ?? null,
     agentTurnId: options.agentTurnId ?? null,
     runtimeSequence: options.runtimeSequence ?? null,
     createdAt: options.createdAt
@@ -1239,8 +1235,7 @@ onMounted(async () => {
     emitRendererDebugEvent,
     ensureQueueController,
     ensureMessageBuffer,
-    removeRuntimeQueueItemById,
-    removeRuntimeQueueItemBySubmissionId,
+    removeRuntimeQueueItemByText,
     removeQueueItem,
     getAgentRunMap,
     getActiveRun,

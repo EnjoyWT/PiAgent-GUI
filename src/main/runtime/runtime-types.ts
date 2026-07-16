@@ -36,9 +36,7 @@ export interface AgentRunStartedPayload {
 
 export interface AgentQueueConsumedPayload {
   rawType: 'queue_consumed'
-  queueItemId: string
   delivery: 'steer' | 'followUp'
-  submissionId?: string | null
   message?: unknown
 }
 
@@ -68,7 +66,6 @@ export interface AgentMessageStartedPayload {
   role: string
   message: unknown
   retrying: boolean
-  submissionId?: string | null
 }
 
 export interface AgentMessageThinkingStartedPayload {
@@ -102,7 +99,6 @@ export interface AgentMessageFinishedPayload {
   rawType: 'message_end'
   role: string
   message: unknown
-  submissionId?: string | null
 }
 
 export interface AgentToolCallStartedPayload {

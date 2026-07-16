@@ -293,7 +293,6 @@ test('gateway submits persisted desktop local messages without duplicating user 
         source: 'test',
         messageKind: 'chat',
         includeInAgentContext: true,
-        submissionId: 'submission-1',
         contentJson: JSON.stringify({
           version: 1,
           blocks: [{ type: 'text', text: 'hello local' }]
@@ -314,7 +313,6 @@ test('gateway submits persisted desktop local messages without duplicating user 
     threadId,
     text: 'hello local',
     messageId: 'local-message-1',
-    submissionId: 'submission-1',
     receivedAt: '2026-04-20T08:00:02.000Z'
   })
   assertScheduledGatewayResult(result)
@@ -363,7 +361,6 @@ test('gateway queues desktop steering prompt into the active runtime instead of 
         version: 1,
         messageKind: 'chat',
         includeInAgentContext: true,
-        submissionId: 'submission-steer',
         content: { version: 1, blocks: [{ type: 'text', text: 'steer now' }] }
       }
     },
@@ -388,7 +385,6 @@ test('gateway queues desktop steering prompt into the active runtime instead of 
     threadId,
     text: 'steer now',
     messageId: 'local-message-steer',
-    submissionId: 'submission-steer',
     receivedAt: '2026-04-20T08:00:02.000Z',
     streamingBehavior: 'steer'
   })
@@ -399,7 +395,6 @@ test('gateway queues desktop steering prompt into the active runtime instead of 
     conversationId: resolved.conversation.id,
     threadId,
     text: 'steer now',
-    submissionId: 'submission-steer',
     streamingBehavior: 'steer',
     images: []
   })
@@ -437,7 +432,6 @@ test('gateway appends desktop local message when the persisted row is missing', 
     threadId,
     text: 'hello after stale cache',
     messageId: 'missing-local-message-1',
-    submissionId: 'submission-missing-1',
     receivedAt: '2026-04-20T08:00:02.000Z'
   })
   assertScheduledGatewayResult(result)

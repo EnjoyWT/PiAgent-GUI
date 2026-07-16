@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
-import type { Skill, ToolDefinition } from '@enjoywt/pi-coding-agent'
-import { stripFrontmatter } from '@enjoywt/pi-coding-agent'
+import type { Skill, ToolDefinition } from '@earendil-works/pi-coding-agent'
+import { stripFrontmatter } from '@earendil-works/pi-coding-agent'
 import { Type } from '@sinclair/typebox'
 
 type CreateReadSkillToolOptions = {
