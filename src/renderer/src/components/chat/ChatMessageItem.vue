@@ -84,6 +84,11 @@ const useAssistantRunFlow = computed(
     Boolean(props.run) &&
     (Boolean(props.agentTurnId) || (props.run?.turns.length ?? 0) <= 1)
 )
+const isAssistantRunFlowOwner = computed(() => {
+  if (!useAssistantRunFlow.value || !props.run) return false
+  if (!props.agentTurnId) return props.run.turns.length <= 1
+  return props.run.turns.at(-1)?.id === props.agentTurnId
+})
 const useAssistantPendingShell = computed(
   () => props.role === 'assistant' && Boolean(props.isPending) && !props.run
 )
@@ -92,6 +97,9 @@ const useFullWidthAssistantShell = computed(
 )
 const assistantTurns = computed<AgentTurn[]>(() => {
   if (!useAssistantRunFlow.value || !props.run) return []
+  // 一个 run 只允许最外层 owner 渲染完整 flow，避免每个 turn 各自生成汇总入口。
+  if (props.run.turns.length > 1 && !isAssistantRunFlowOwner.value) return []
+  if (isAssistantRunFlowOwner.value) return props.run.turns
   if (props.agentTurnId) {
     const turn = props.run.turns.find((turn) => turn.id === props.agentTurnId)
     return turn ? [turn] : []
@@ -513,6 +521,7 @@ watch(isMoreOpen, (open, _prev, onCleanup) => {
               :blocks="assistantFlow.blocks"
               :thread-id="props.run?.threadId"
               :workspace-path="props.workspacePath"
+              :show-intermediate-summary="isAssistantRunFlowOwner"
               @widget-action="onWidgetAction"
               @transport-setup-regenerate="onTransportSetupRegenerate"
               @widget-layout-change="emit('widget-layout-change')"

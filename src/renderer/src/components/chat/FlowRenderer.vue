@@ -26,6 +26,7 @@ const props = defineProps<{
   blocks: MessageRenderBlock[]
   threadId?: string | null
   workspacePath?: string
+  showIntermediateSummary?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -96,6 +97,56 @@ const getThinkingStatusText = (block: Extract<MessageRenderBlock, { kind: 'think
 const thinkingExpandedById = ref<Record<string, boolean>>({})
 const expandedToolIds = ref<Record<string, boolean>>({})
 const expandedErrorIds = ref<Record<string, boolean>>({})
+const intermediateProcessCollapsed = ref(false)
+const intermediateProcessUserToggled = ref(false)
+
+const finalAnswerBlockId = computed(() => {
+  for (let index = props.blocks.length - 1; index >= 0; index -= 1) {
+    const block = props.blocks[index]
+    if (block?.kind === 'text' && block.text.trim()) return block.id
+  }
+  return null
+})
+
+const hasFinalAnswer = computed(() => finalAnswerBlockId.value != null)
+const hasIntermediateProcess = computed(
+  () =>
+    props.showIntermediateSummary !== false &&
+    hasFinalAnswer.value &&
+    props.blocks.some((block) => block.id !== finalAnswerBlockId.value)
+)
+
+const processedDurationMs = computed(() => {
+  const thinkingDuration = props.blocks.reduce((total, block) => {
+    if (block.kind !== 'thinking') return total
+    return total + Math.max(0, (block.endedAt ?? nowMs.value) - block.startedAt)
+  }, 0)
+  if (thinkingDuration > 0) return thinkingDuration
+
+  return props.blocks.reduce((total, block) => {
+    if ((block.kind !== 'tool' && block.kind !== 'file') || block.step.durationMs == null) {
+      return total
+    }
+    return total + block.step.durationMs
+  }, 0)
+})
+
+const toggleIntermediateProcess = (): void => {
+  intermediateProcessUserToggled.value = true
+  intermediateProcessCollapsed.value = !intermediateProcessCollapsed.value
+}
+
+const isFinalAnswerBlock = (block: MessageRenderBlock): boolean =>
+  block.id === finalAnswerBlockId.value
+
+watch(
+  finalAnswerBlockId,
+  (blockId, previousBlockId) => {
+    if (!blockId || blockId === previousBlockId || intermediateProcessUserToggled.value) return
+    intermediateProcessCollapsed.value = true
+  },
+  { immediate: true }
+)
 
 // ── 思考块内部滚动控制 ────────────────────────────────────────────────
 const thinkingScrollRefs = new Map<string, HTMLElement>()
@@ -172,8 +223,7 @@ const scrollThinkingToBottom = (
 const activeThinkingBlock = computed(
   () =>
     props.blocks.find((b) => b.kind === 'thinking' && b.isActive) as
-      | Extract<MessageRenderBlock, { kind: 'thinking' }>
-      | undefined
+      Extract<MessageRenderBlock, { kind: 'thinking' }> | undefined
 )
 
 watch(
@@ -457,7 +507,25 @@ const openFileContextMenu = (filePath: string): void => {
 
 <template>
   <div v-if="blocks.length > 0" class="space-y-1">
-    <div v-for="block in blocks" :key="block.id">
+    <button
+      v-if="hasIntermediateProcess"
+      type="button"
+      class="hover-expand-x inline-flex items-center gap-2 rounded-lg py-1 pr-2 text-(--theme-text-dim) transition-colors hover:bg-(--theme-bg-hover-btn)"
+      :aria-expanded="!intermediateProcessCollapsed"
+      @click="toggleIntermediateProcess"
+    >
+      <span class="text-[13px] font-medium leading-relaxed"
+        >已处理 {{ formatThinkingDuration(processedDurationMs) }}</span
+      >
+      <ChevronDown v-if="!intermediateProcessCollapsed" :size="14" class="shrink-0" />
+      <ChevronRight v-else :size="14" class="shrink-0" />
+    </button>
+
+    <div
+      v-for="block in blocks"
+      v-show="!intermediateProcessCollapsed || isFinalAnswerBlock(block)"
+      :key="block.id"
+    >
       <div v-if="block.kind === 'thinking'" class="w-fit max-w-full">
         <button
           type="button"
