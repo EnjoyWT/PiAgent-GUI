@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 
-export const CONTEXT_SCHEMA_VERSION = 13
+export const CONTEXT_SCHEMA_VERSION = 14
 
 export function migrateContextSchema(db: Database.Database): void {
   db.exec(`
@@ -40,6 +40,10 @@ export function migrateContextSchema(db: Database.Database): void {
       active_summary_entry_id TEXT,
       compacted_until_seq INTEGER,
       revision INTEGER NOT NULL DEFAULT 0,
+      context_usage_tokens INTEGER,
+      context_usage_window INTEGER,
+      context_usage_revision INTEGER,
+      context_usage_updated_at TEXT,
       updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
       FOREIGN KEY (active_summary_entry_id) REFERENCES context_entries(id) ON DELETE SET NULL
     );
@@ -70,4 +74,18 @@ export function migrateContextSchema(db: Database.Database): void {
       PRIMARY KEY (thread_id, engine_name)
     );
   `)
+
+  const headColumns = db.prepare(`PRAGMA table_info(thread_context_heads)`).all() as Array<{ name: string }>
+  const existingColumns = new Set(headColumns.map((column) => column.name))
+  const migrations = [
+    ['context_usage_tokens', 'INTEGER'],
+    ['context_usage_window', 'INTEGER'],
+    ['context_usage_revision', 'INTEGER'],
+    ['context_usage_updated_at', 'TEXT']
+  ] as const
+  for (const [column, definition] of migrations) {
+    if (!existingColumns.has(column)) {
+      db.exec(`ALTER TABLE thread_context_heads ADD COLUMN ${column} ${definition}`)
+    }
+  }
 }

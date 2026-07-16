@@ -55,6 +55,11 @@ const rowToHead = (row: Record<string, unknown>): ThreadContextHead => ({
     row.active_summary_entry_id == null ? null : String(row.active_summary_entry_id),
   compactedUntilSeq: row.compacted_until_seq == null ? null : Number(row.compacted_until_seq),
   revision: Number(row.revision),
+  contextUsageTokens: row.context_usage_tokens == null ? null : Number(row.context_usage_tokens),
+  contextUsageWindow: row.context_usage_window == null ? null : Number(row.context_usage_window),
+  contextUsageRevision: row.context_usage_revision == null ? null : Number(row.context_usage_revision),
+  contextUsageUpdatedAt:
+    row.context_usage_updated_at == null ? null : String(row.context_usage_updated_at),
   updatedAt: String(row.updated_at)
 })
 
@@ -117,6 +122,10 @@ export class ContextStore {
     activeSummaryEntryId?: string | null
     compactedUntilSeq?: number | null
     revision?: number
+    contextUsageTokens?: number | null
+    contextUsageWindow?: number | null
+    contextUsageRevision?: number | null
+    contextUsageUpdatedAt?: string | null
   }): ThreadContextHead {
     const current = this.getThreadHead(input.threadId)
     const revision =
@@ -126,13 +135,18 @@ export class ContextStore {
       .prepare(
         `
           INSERT INTO thread_context_heads (
-            thread_id, engine_name, active_summary_entry_id, compacted_until_seq, revision, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?)
+            thread_id, engine_name, active_summary_entry_id, compacted_until_seq, revision,
+            context_usage_tokens, context_usage_window, context_usage_revision, context_usage_updated_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(thread_id) DO UPDATE SET
             engine_name = excluded.engine_name,
             active_summary_entry_id = excluded.active_summary_entry_id,
             compacted_until_seq = excluded.compacted_until_seq,
             revision = excluded.revision,
+            context_usage_tokens = excluded.context_usage_tokens,
+            context_usage_window = excluded.context_usage_window,
+            context_usage_revision = excluded.context_usage_revision,
+            context_usage_updated_at = excluded.context_usage_updated_at,
             updated_at = excluded.updated_at
         `
       )
@@ -142,9 +156,25 @@ export class ContextStore {
         input.activeSummaryEntryId ?? null,
         input.compactedUntilSeq ?? null,
         revision,
+        input.contextUsageTokens ?? current?.contextUsageTokens ?? null,
+        input.contextUsageWindow ?? current?.contextUsageWindow ?? null,
+        input.contextUsageRevision ?? current?.contextUsageRevision ?? null,
+        input.contextUsageUpdatedAt ?? current?.contextUsageUpdatedAt ?? null,
         updatedAt
       )
     return this.ensureThreadHead(input.threadId, input.engineName)
+  }
+
+  saveContextUsage(threadId: string, usage: { tokens: number; contextWindow: number }): ThreadContextHead {
+    const head = this.getThreadHead(threadId) ?? this.ensureThreadHead(threadId, 'summary-compressor')
+    const updatedAt = formatSqliteUtcTimestamp()
+    this.db.prepare(`
+      UPDATE thread_context_heads
+      SET context_usage_tokens = ?, context_usage_window = ?, context_usage_revision = ?,
+          context_usage_updated_at = ?, updated_at = ?
+      WHERE thread_id = ?
+    `).run(Math.trunc(usage.tokens), Math.trunc(usage.contextWindow), head.revision, updatedAt, updatedAt, threadId)
+    return this.ensureThreadHead(threadId, head.engineName)
   }
 
   listEntries(threadId: string): ContextEntry[] {

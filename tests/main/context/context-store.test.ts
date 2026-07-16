@@ -46,6 +46,28 @@ test('ContextStore appends ordered entries and lists active entries', () => {
   )
 })
 
+test('ContextStore persists usage snapshot and invalidates it on revision change', () => {
+  const db = createContextTestDb()
+  insertThread(db, 'thread-1')
+  const store = new ContextStore(db)
+  store.ensureThreadHead('thread-1', 'summary-compressor')
+
+  store.saveContextUsage('thread-1', { tokens: 300, contextWindow: 1000 })
+  const saved = store.getThreadHead('thread-1')
+  assert.equal(saved?.contextUsageTokens, 300)
+  assert.equal(saved?.contextUsageRevision, saved?.revision)
+
+  const next = store.upsertThreadHead({
+    threadId: 'thread-1',
+    engineName: 'summary-compressor',
+    activeSummaryEntryId: null,
+    compactedUntilSeq: 1
+  })
+  assert.equal(next.revision, 1)
+  assert.equal(next.contextUsageTokens, 300)
+  assert.notEqual(next.contextUsageRevision, next.revision)
+})
+
 test('ContextStore deduplicates entries by thread + semanticKind + sourceRef', () => {
   const db = createContextTestDb()
   insertThread(db, 'thread-1')

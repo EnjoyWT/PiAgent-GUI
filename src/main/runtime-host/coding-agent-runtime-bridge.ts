@@ -1245,6 +1245,12 @@ export class CodingAgentRuntimeBridge {
         this.emitAppEvent?.(interactionThreadId, mappedAppEvent)
       },
       onRunFinalized: async (projection) => {
+        if (this.contextHostService) {
+          this.contextHostService.recordContextUsage(
+            interactionThreadId,
+            session.getContextUsage?.()
+          )
+        }
         await this.persistFinalizedRun(conversation.id, projection)
         if (this.contextHostService) {
           await this.contextHostService.onRunFinalized(

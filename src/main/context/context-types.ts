@@ -54,6 +54,10 @@ export type ThreadContextHead = {
   activeSummaryEntryId?: string | null
   compactedUntilSeq?: number | null
   revision: number
+  contextUsageTokens?: number | null
+  contextUsageWindow?: number | null
+  contextUsageRevision?: number | null
+  contextUsageUpdatedAt?: string | null
   updatedAt: string
 }
 

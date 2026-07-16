@@ -42,6 +42,19 @@ export class ContextHostService {
     return this.configService.getConfig()
   }
 
+  recordContextUsage(threadId: string, usage: unknown): void {
+    if (!usage || typeof usage !== 'object' || Array.isArray(usage)) return
+    const record = usage as Record<string, unknown>
+    const tokens = typeof record.tokens === 'number' && Number.isFinite(record.tokens) ? record.tokens : 0
+    const contextWindow =
+      typeof record.contextWindow === 'number' && Number.isFinite(record.contextWindow)
+        ? record.contextWindow
+        : 0
+    if (tokens <= 0 || contextWindow <= 0) return
+    this.ensureThreadState(threadId)
+    this.store.saveContextUsage(threadId, { tokens, contextWindow })
+  }
+
   ensureThreadState(threadId: string): void {
     const config = this.configService.getConfig()
     const engineName = config.engine || 'noop'
@@ -96,8 +109,33 @@ export class ContextHostService {
       }
     }
 
+    const head = this.store.getThreadHead(threadId) ?? this.store.ensureThreadHead(threadId, config.engine || 'noop')
+    const persistedTokens = head.contextUsageTokens
+    const persistedWindow = head?.contextUsageWindow
+    const persistedIsCurrent =
+      persistedTokens != null &&
+      persistedWindow != null &&
+      head.contextUsageRevision === head.revision
+    const effectiveEstimate =
+      persistedIsCurrent && estimate.estimateMode === 'heuristic_only'
+        ? {
+            ...estimate,
+            contextWindow: persistedWindow,
+            estimatedPromptTokens: Math.max(estimate.estimatedPromptTokens, persistedTokens),
+            thresholdTokens: Math.max(
+              1,
+              Math.min(
+                Math.floor(persistedWindow * config.trigger.thresholdPercent),
+                Math.max(1, persistedWindow - config.trigger.reserveOutputTokens)
+              )
+            ),
+            estimateMode: 'usage_backed' as const,
+            currentContextTokens: Math.max(estimate.estimatedPromptTokens, persistedTokens)
+          }
+        : estimate
+
     const engine = this.resolveEngine()
-    if (!engine.shouldCompact({ estimate })) {
+    if (!engine.shouldCompact({ estimate: effectiveEstimate })) {
       return {
         attempted: false,
         compacted: false,

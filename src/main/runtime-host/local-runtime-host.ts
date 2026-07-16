@@ -598,7 +598,15 @@ export class LocalRuntimeHostService {
         contextUsage: asContextUsage(runtime.contextUsage)
       },
       activeEntries,
-      fallbackContextWindow
+      fallbackContextWindow,
+      persistedContextUsage: head
+        ? {
+            tokens: head.contextUsageTokens ?? null,
+            contextWindow: head.contextUsageWindow ?? 0,
+            revision: head.contextUsageRevision ?? null,
+            currentRevision: head.revision
+          }
+        : undefined
     })
     const engineName = head?.engineName ?? config.engine ?? 'noop'
     const engineState = parseContextStatePreview(

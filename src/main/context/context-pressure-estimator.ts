@@ -21,6 +21,12 @@ type EstimateContextDebugPressureInput = {
   runtime: RuntimePressureState
   activeEntries: readonly ContextEntry[]
   fallbackContextWindow?: number | null
+  persistedContextUsage?: {
+    tokens: number | null
+    contextWindow: number
+    revision: number | null
+    currentRevision: number
+  }
 }
 
 const normalizePositiveTokenCount = (value: unknown): number | null => {
@@ -42,7 +48,8 @@ export const estimateContextDebugPressure = ({
   promptBudgetService,
   runtime,
   activeEntries,
-  fallbackContextWindow
+  fallbackContextWindow,
+  persistedContextUsage
 }: EstimateContextDebugPressureInput): ContextPressureEstimate | null => {
   const runtimeContextWindow = normalizePositiveTokenCount(runtime.contextWindow)
   if (runtime.initialized && runtimeContextWindow) {
@@ -62,10 +69,42 @@ export const estimateContextDebugPressure = ({
     .map(mapActiveEntryToPromptMessage)
     .filter((message): message is { content: string } => Boolean(message))
 
-  return promptBudgetService.estimate({
+  const estimate = promptBudgetService.estimate({
     config,
     contextWindow,
     currentMessages,
     systemPrompt: ''
   })
+  if (
+    persistedContextUsage != null &&
+    persistedContextUsage.revision === persistedContextUsage.currentRevision &&
+    persistedContextUsage.tokens != null &&
+    persistedContextUsage.contextWindow > 0
+  ) {
+    const persistedTokens = Math.max(0, Math.trunc(persistedContextUsage.tokens))
+    const persistedWindow = Math.trunc(persistedContextUsage.contextWindow)
+    const thresholdTokens = Math.max(
+      1,
+      Math.min(
+        Math.floor(persistedWindow * config.trigger.thresholdPercent),
+        Math.max(1, persistedWindow - config.trigger.reserveOutputTokens)
+      )
+    )
+    const currentContextTokens = Math.max(estimate.estimatedPromptTokens, persistedTokens)
+    return {
+      ...estimate,
+      contextWindow: persistedWindow,
+      estimatedPromptTokens: currentContextTokens,
+      thresholdTokens,
+      estimateMode: 'usage_backed',
+      currentContextTokens,
+      warningLevel:
+        currentContextTokens >= thresholdTokens
+          ? 'critical'
+          : currentContextTokens >= Math.floor(thresholdTokens * 0.85)
+            ? 'warning'
+            : 'normal'
+    }
+  }
+  return estimate
 }

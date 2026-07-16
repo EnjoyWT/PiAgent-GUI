@@ -48,6 +48,57 @@ const createEntry = (
   ...overrides
 })
 
+test('estimateContextDebugPressure keeps persisted usage across runtime restart', () => {
+  const pressure = estimateContextDebugPressure({
+    config: createConfig(),
+    promptBudgetService: new PromptBudgetService(),
+    runtime: {
+      initialized: false,
+      contextWindow: null,
+      currentMessages: [],
+      systemPrompt: ''
+    },
+    activeEntries: [createEntry('small')],
+    fallbackContextWindow: 1000,
+    persistedContextUsage: {
+      tokens: 300,
+      contextWindow: 1000,
+      revision: 0,
+      currentRevision: 0
+    }
+  })
+
+  assert.ok(pressure)
+  assert.equal(pressure.estimateMode, 'usage_backed')
+  assert.equal(pressure.estimatedPromptTokens, 300)
+  assert.equal(pressure.thresholdTokens, 500)
+})
+
+test('estimateContextDebugPressure ignores usage from a previous compaction revision', () => {
+  const pressure = estimateContextDebugPressure({
+    config: createConfig(),
+    promptBudgetService: new PromptBudgetService(),
+    runtime: {
+      initialized: false,
+      contextWindow: null,
+      currentMessages: [],
+      systemPrompt: ''
+    },
+    activeEntries: [createEntry('x'.repeat(400))],
+    fallbackContextWindow: 1000,
+    persistedContextUsage: {
+      tokens: 900,
+      contextWindow: 1000,
+      revision: 1,
+      currentRevision: 2
+    }
+  })
+
+  assert.ok(pressure)
+  assert.equal(pressure.estimateMode, 'heuristic_only')
+  assert.equal(pressure.estimatedPromptTokens, 100)
+})
+
 test('estimateContextDebugPressure estimates active entries when runtime is idle', () => {
   const pressure = estimateContextDebugPressure({
     config: createConfig(),
