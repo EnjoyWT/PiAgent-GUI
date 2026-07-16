@@ -814,10 +814,14 @@ const buildAssistantMessageKey = (runId?: string | null, turnId?: string | null)
 }
 
 const shouldRecoverAssistantTurnMessage = (
-  _run: AgentRunProjection,
+  run: AgentRunProjection,
   turn: AgentTurnProjection
 ): boolean =>
-  turnHasVisibleOutput(turn) || (turn.status === 'error' && Boolean(turn.errorMessage?.trim()))
+  // A running turn has no persisted assistant row until its first delta arrives.
+  // Recover its shell so switching back to the thread immediately restores the live run UI.
+  (run.status === 'running' && turn.status === 'running') ||
+  turnHasVisibleOutput(turn) ||
+  (turn.status === 'error' && Boolean(turn.errorMessage?.trim()))
 
 const buildRecoveredAssistantTurnMessage = (
   run: AgentRunProjection,

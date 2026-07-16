@@ -666,7 +666,7 @@ test('local thread runtime events can be listed from core-v2 mirror', () => {
   assert.match(runtimeEvents[0]?.payload_json ?? '', /endTurn/)
 })
 
-test('latest window does not recover empty running assistant turn from live snapshot', () => {
+test('latest window recovers empty running assistant turn from live snapshot', () => {
   const { core, thread, userMessage, assistantMessage } = seedThread()
   const page = buildLocalThreadWindowFromService(
     core,
@@ -699,7 +699,24 @@ test('latest window does not recover empty running assistant turn from live snap
 
   assert.deepEqual(
     page.messages.map((message) => message.id),
-    [userMessage.id, assistantMessage.id]
+    [userMessage.id, assistantMessage.id, undefined]
+  )
+  const recovered = page.messages.at(-1)
+  assert.deepEqual(
+    {
+      role: recovered?.role,
+      agentRunId: recovered?.agentRunId,
+      agentTurnId: recovered?.agentTurnId,
+      content: recovered?.content,
+      isPending: recovered?.isPending
+    },
+    {
+      role: 'assistant',
+      agentRunId: 'run-live',
+      agentTurnId: 'turn-live',
+      content: '',
+      isPending: true
+    }
   )
   assert.equal(page.activeRunId, 'run-live')
   assert.equal(page.isStreaming, true)
