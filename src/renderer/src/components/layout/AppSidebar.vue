@@ -244,6 +244,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { WorkspaceRow, ThreadRow as SidebarThread } from '../../../../preload/db-types'
 import Tooltip from '../common/Tooltip.vue'
+import { useHoverIntent } from '@renderer/composables/useHoverIntent'
 import {
   MessageSquarePlus,
   Settings as SettingsIcon,
@@ -286,7 +287,6 @@ const emit = defineEmits<{
 }>()
 
 const isMenuOpen = ref(false)
-let menuTimer: ReturnType<typeof setTimeout> | null = null
 const isResizing = ref(false)
 const isResizeActive = ref(false)
 const resizeStartX = ref(0)
@@ -557,16 +557,19 @@ const onWorkspaceContextMenuKeydown = (event: KeyboardEvent): void => {
   if (event.key === 'Escape') closeWorkspaceContextMenu()
 }
 
-const handleMouseEnter = (): void => {
-  if (menuTimer) clearTimeout(menuTimer)
-  isMenuOpen.value = true
-}
-
-const handleMouseLeave = (): void => {
-  menuTimer = setTimeout(() => {
+const footerMenuHover = useHoverIntent({
+  groupId: 'sidebar-footer-menu',
+  onOpen: () => {
+    isMenuOpen.value = true
+  },
+  onClose: () => {
     isMenuOpen.value = false
-  }, 300)
-}
+  },
+  closeDelay: 300
+})
+
+const handleMouseEnter = footerMenuHover.enter
+const handleMouseLeave = footerMenuHover.close
 
 const onOpenSettings = (): void => {
   emit('openSettings')
@@ -630,7 +633,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopResize()
-  if (menuTimer) clearTimeout(menuTimer)
+  footerMenuHover.cancel()
+  isMenuOpen.value = false
   window.removeEventListener('click', closeWorkspaceContextMenu)
   window.removeEventListener('keydown', onWorkspaceContextMenuKeydown)
 })

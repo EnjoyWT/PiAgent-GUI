@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, nextTick, onMounted, onUnmounted } from 'vue'
+import { useHoverIntent } from '@renderer/composables/useHoverIntent'
 
 const props = defineProps<{
   text: string
@@ -8,6 +9,7 @@ const props = defineProps<{
   offsetX?: number
   maxWidth?: number
   multiline?: boolean
+  hoverGroup?: string
 }>()
 
 const visible = ref(false)
@@ -26,13 +28,9 @@ const tooltipStyle = computed(() => ({
 
 const finalPlacement = ref<'top' | 'bottom'>('top')
 
-let timer: any = null
-
 const GAP = () => props.offset ?? 8
 
-// ✅ 显示 / 隐藏（支持进入 tooltip）
 const show = async () => {
-  clearTimeout(timer)
   if (visible.value) return
   visible.value = true
   await nextTick()
@@ -40,10 +38,20 @@ const show = async () => {
 }
 
 const hide = () => {
-  timer = setTimeout(() => {
-    visible.value = false
-  }, 100)
+  visible.value = false
 }
+
+const hoverIntent = useHoverIntent({
+  groupId: props.hoverGroup ?? 'tooltip-global',
+  onOpen: () => void show(),
+  onClose: hide,
+  closeDelay: 100
+})
+
+const handleTriggerEnter = () => hoverIntent.enter()
+const handleTriggerLeave = () => hoverIntent.close()
+const handleTooltipEnter = () => hoverIntent.cancel()
+const handleTooltipLeave = () => hoverIntent.close()
 
 // ✅ 自动定位 + 自动翻转
 const updatePosition = () => {
@@ -105,7 +113,13 @@ onUnmounted(() => {
 
 <template>
   <!-- trigger -->
-  <span ref="triggerRef" class="inline-flex" v-bind="$attrs" @mouseenter="show" @mouseleave="hide">
+  <span
+    ref="triggerRef"
+    class="inline-flex"
+    v-bind="$attrs"
+    @mouseenter="handleTriggerEnter"
+    @mouseleave="handleTriggerLeave"
+  >
     <slot />
   </span>
 
@@ -118,8 +132,8 @@ onUnmounted(() => {
         class="tooltip"
         :class="props.multiline ? 'tooltip--multiline' : ''"
         :style="tooltipStyle"
-        @mouseenter="show"
-        @mouseleave="hide"
+        @mouseenter="handleTooltipEnter"
+        @mouseleave="handleTooltipLeave"
       >
         {{ text }}
       </div>

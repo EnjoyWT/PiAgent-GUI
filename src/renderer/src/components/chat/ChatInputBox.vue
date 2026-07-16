@@ -24,6 +24,7 @@ import {
 } from 'lucide-vue-next'
 import FloatingTooltip from '../common/FloatingTooltip.vue'
 import Tooltip from '../common/Tooltip.vue'
+import { useHoverIntent } from '@renderer/composables/useHoverIntent'
 import { getProviderIconUrl } from '@renderer/utils/providerIcons'
 import type { QueueRuntimeState } from './types'
 
@@ -86,8 +87,7 @@ const inputValue = computed({
 })
 
 const showAbortButton = computed(
-  () =>
-    props.queueRuntimeState !== 'aborting' && (props.canAbort ?? props.isStreaming)
+  () => props.queueRuntimeState !== 'aborting' && (props.canAbort ?? props.isStreaming)
 )
 const isCancelling = computed(() => props.queueRuntimeState === 'aborting')
 const composerDisabled = computed(() => isCancelling.value)
@@ -530,60 +530,47 @@ const showMcpMenu = ref(false)
 const mcpButtonRef = ref<HTMLElement | null>(null)
 const mcpMenuRef = ref<HTMLElement | null>(null)
 const mcpMenuStyle = ref<Record<string, string>>({})
-let mcpMenuTimer: any = null
-
-const clearMcpMenuTimer = () => {
-  if (mcpMenuTimer) {
-    clearTimeout(mcpMenuTimer)
-    mcpMenuTimer = null
-  }
-}
-
-const handleMcpMouseEnter = () => {
-  clearMcpMenuTimer()
-  if (!showMcpMenu.value) {
+const showThinkingMenu = ref(false)
+const thinkingButtonRef = ref<HTMLElement | null>(null)
+const thinkingMenuRef = ref<HTMLElement | null>(null)
+const thinkingMenuStyle = ref<Record<string, string>>({})
+const mcpLoading = ref(false)
+const mcpHover = useHoverIntent({
+  groupId: 'chat-toolbar-menu',
+  onOpen: () => {
+    if (showMcpMenu.value) return
     applyMcpMenuPosition()
     showModelMenu.value = false
     showThinkingMenu.value = false
     showMcpMenu.value = true
     void loadWorkspaceMcpServers()
-  }
-}
-
-const handleMcpMouseLeave = () => {
-  mcpMenuTimer = setTimeout(() => {
+  },
+  onClose: () => {
     showMcpMenu.value = false
-  }, 200)
-}
-const showThinkingMenu = ref(false)
-const thinkingButtonRef = ref<HTMLElement | null>(null)
-const thinkingMenuRef = ref<HTMLElement | null>(null)
-const thinkingMenuStyle = ref<Record<string, string>>({})
-let thinkingMenuTimer: any = null
-
-const clearThinkingMenuTimer = () => {
-  if (thinkingMenuTimer) {
-    clearTimeout(thinkingMenuTimer)
-    thinkingMenuTimer = null
   }
-}
+})
 
-const handleThinkingMouseEnter = () => {
-  clearThinkingMenuTimer()
-  if (!showThinkingMenu.value) {
+const thinkingHover = useHoverIntent({
+  groupId: 'chat-toolbar-menu',
+  onOpen: () => {
+    if (showThinkingMenu.value) return
     applyThinkingMenuPosition()
     showModelMenu.value = false
     showMcpMenu.value = false
     showThinkingMenu.value = true
-  }
-}
-
-const handleThinkingMouseLeave = () => {
-  thinkingMenuTimer = setTimeout(() => {
+  },
+  onClose: () => {
     showThinkingMenu.value = false
-  }, 200)
-}
-const mcpLoading = ref(false)
+  }
+})
+
+const handleMcpMouseEnter = mcpHover.enter
+const handleMcpMouseLeave = mcpHover.close
+const clearMcpMenuTimer = mcpHover.cancel
+const handleThinkingMouseEnter = thinkingHover.enter
+const handleThinkingMouseLeave = thinkingHover.close
+const clearThinkingMenuTimer = thinkingHover.cancel
+
 const mcpServers = ref<
   Array<{
     id: string

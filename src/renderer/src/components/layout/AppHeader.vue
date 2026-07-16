@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { Search, SquarePen, PanelLeft, FolderOpen, Bug } from 'lucide-vue-next'
 import FloatingTooltip from '../common/FloatingTooltip.vue'
+import { useHoverIntent } from '@renderer/composables/useHoverIntent'
 
 const props = defineProps<{
   isSidebarVisible: boolean
@@ -50,20 +51,38 @@ const tooltip = ref<{ visible: boolean; text: string; left: number; top: number 
   top: 0
 })
 
-const showTooltip = (e: MouseEvent, text: string) => {
-  const el = e.currentTarget as HTMLElement | null
-  if (!el) return
-  const rect = el.getBoundingClientRect()
-  tooltip.value = {
-    visible: true,
-    text,
-    left: rect.left + rect.width / 2,
-    top: rect.bottom
-  }
-}
-
 const hideTooltip = () => {
   tooltip.value.visible = false
+}
+
+let pendingTooltip: { element: HTMLElement; text: string } | null = null
+const tooltipHover = useHoverIntent({
+  groupId: 'app-header-tooltip',
+  onOpen: () => {
+    if (!pendingTooltip) return
+    const { element: el, text } = pendingTooltip
+    const rect = el.getBoundingClientRect()
+    tooltip.value = {
+      visible: true,
+      text,
+      left: rect.left + rect.width / 2,
+      top: rect.bottom
+    }
+  },
+  onClose: hideTooltip,
+  closeDelay: 100
+})
+
+const handleTooltipEnter = (event: MouseEvent, text: string): void => {
+  const element = event.currentTarget as HTMLElement | null
+  if (!element) return
+  pendingTooltip = { element, text }
+  tooltipHover.enter()
+}
+
+const handleTooltipLeave = (): void => {
+  pendingTooltip = null
+  tooltipHover.close()
 }
 
 const workspaceDisplayName = computed(() => {
@@ -111,8 +130,10 @@ const workspaceDisplayName = computed(() => {
           class="p-1 hover:bg-(--theme-bg-hover-btn) rounded transition-colors"
           :aria-label="isSidebarVisible ? '收起侧边栏' : '展开侧边栏'"
           @click="emit('toggleSidebar')"
-          @mouseenter.stop="showTooltip($event, isSidebarVisible ? '收起侧边栏' : '展开侧边栏')"
-          @mouseleave.stop="hideTooltip"
+          @mouseenter.stop="
+            handleTooltipEnter($event, isSidebarVisible ? '收起侧边栏' : '展开侧边栏')
+          "
+          @mouseleave.stop="handleTooltipLeave"
         >
           <PanelLeft
             :size="16"
@@ -124,8 +145,8 @@ const workspaceDisplayName = computed(() => {
           class="p-1 hover:bg-(--theme-bg-hover-btn) rounded transition-colors"
           aria-label="搜索"
           @click="emit('openSearch')"
-          @mouseenter.stop="showTooltip($event, '搜索')"
-          @mouseleave.stop="hideTooltip"
+          @mouseenter.stop="handleTooltipEnter($event, '搜索')"
+          @mouseleave.stop="handleTooltipLeave"
         >
           <Search :size="16" class="text-gray-500" />
         </button>
@@ -135,8 +156,8 @@ const workspaceDisplayName = computed(() => {
             class="p-1 hover:bg-(--theme-bg-hover-btn) rounded transition-colors"
             aria-label="新建会话"
             @click="toggleDropdown"
-            @mouseenter.stop="showTooltip($event, '新建会话')"
-            @mouseleave.stop="hideTooltip"
+            @mouseenter.stop="handleTooltipEnter($event, '新建会话')"
+            @mouseleave.stop="handleTooltipLeave"
           >
             <SquarePen :size="16" class="text-gray-500" />
           </button>
@@ -196,8 +217,8 @@ const workspaceDisplayName = computed(() => {
         "
         aria-label="打开工作目录"
         @click="emit('openWorkspaceFolder')"
-        @mouseenter.stop="showTooltip($event, props.workspacePath || workspaceDisplayName)"
-        @mouseleave.stop="hideTooltip"
+        @mouseenter.stop="handleTooltipEnter($event, props.workspacePath || workspaceDisplayName)"
+        @mouseleave.stop="handleTooltipLeave"
       >
         <div class="flex items-center gap-0.5">
           <FolderOpen :size="11" class="inline-block" />
@@ -213,8 +234,8 @@ const workspaceDisplayName = computed(() => {
         class="p-1 hover:bg-(--theme-bg-hover-btn) rounded transition-colors"
         :aria-label="isRuntimeDebugVisible ? '关闭 Runtime Inspector' : '打开 Runtime Inspector'"
         @click="emit('toggleRuntimeDebug')"
-        @mouseenter.stop="showTooltip($event, 'Runtime Inspector')"
-        @mouseleave.stop="hideTooltip"
+        @mouseenter.stop="handleTooltipEnter($event, 'Runtime Inspector')"
+        @mouseleave.stop="handleTooltipLeave"
       >
         <Bug
           :size="16"
