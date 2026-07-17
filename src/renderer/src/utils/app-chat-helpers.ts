@@ -6,8 +6,8 @@ import type {
   ChatMessageContent,
   PendingQueueItem
 } from '../components/chat/types'
-import { getMessageIdentityKey } from './message-keys'
-import { compareChatMessagesByTimeline } from './thread-window-merge'
+import { getMessageIdentityKey } from './message-keys.ts'
+import { compareChatMessagesByTimeline } from './thread-window-merge.ts'
 
 const toPlainImageBlock = (image: ChatImageBlock): ChatImageBlock => ({
   type: 'image',

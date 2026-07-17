@@ -4,7 +4,6 @@ import type { ConversationEventRow } from '../../../preload/db-types'
 import type {
   AgentRun,
   AgentTurn,
-  ChatContentBlock,
   ChatMessage,
   ChatWidget,
   PendingQueueItem
@@ -40,14 +39,6 @@ type RuntimeBinding = {
 
 type ThreadScopedAgentAppEvent = AgentAppEvent & {
   __chatThreadId?: string
-}
-
-type PersistRuntimeUserMessageOptions = {
-  blocks: ChatContentBlock[]
-  agentRunId?: string | null
-  agentTurnId?: string | null
-  runtimeSequence?: number | null
-  createdAt?: string | number | Date | null
 }
 
 type RuntimeEventBridgeOptions = {
@@ -109,11 +100,6 @@ type RuntimeEventBridgeOptions = {
     widget: ChatWidget
   ) => void
   onRunSettled: (threadId: string, runId: string, status: string) => Promise<void>
-  persistRuntimeUserMessage: (
-    threadId: string,
-    message: ChatMessage,
-    options: PersistRuntimeUserMessageOptions
-  ) => Promise<void>
   scrollToBottom: (options?: { force?: boolean }) => void | Promise<void>
 }
 
@@ -166,12 +152,7 @@ export const createRuntimeEventBridge = (options: RuntimeEventBridgeOptions) => 
       const text = event.text || runtimeItem?.text || ''
       const isAutomationPrompt = isAutomationPromptText(text)
       const list = options.ensureMessageBuffer(threadId)
-      const existingAgentMsg = findAgentUserMessage(
-        list,
-        text,
-        event.agentRunId,
-        event.agentTurnId
-      )
+      const existingAgentMsg = findAgentUserMessage(list, text, event.agentRunId, event.agentTurnId)
       const replayAnchor = !existingAgentMsg ? findReplayAnchorUserMessage(list, text) : null
       const optimisticUser =
         !existingAgentMsg && !replayAnchor ? findOptimisticDispatchedUserMessage(list, text) : null
@@ -204,7 +185,9 @@ export const createRuntimeEventBridge = (options: RuntimeEventBridgeOptions) => 
       userMsg.blocks = blocks
       userMsg.messageKind = isAutomationPrompt ? 'automation' : 'chat'
       userMsg.includeInAgentContext = !isAutomationPrompt
-      userMsg.retryCandidate = false
+      // queue.consumed 不携带稳定的 run/turn 身份。重发时保留锚点，直到后续
+      // agent.message.started 绑定新 run；否则该事件与 started 的 ID 不一致时会新增一条 user 消息。
+      userMsg.retryCandidate = Boolean(replayAnchor)
       userMsg.runtimeSequence = event.sequence
       userMsg.agentRunId = event.agentRunId ?? undefined
       userMsg.agentTurnId = event.agentTurnId ?? undefined
@@ -213,7 +196,7 @@ export const createRuntimeEventBridge = (options: RuntimeEventBridgeOptions) => 
         threadId,
         'debugUiUserQueueConsumed',
         {
-                    agentRunId: event.agentRunId ?? null,
+          agentRunId: event.agentRunId ?? null,
           agentTurnId: event.agentTurnId ?? null,
           runtimeSequence: event.sequence,
           matchedExisting: Boolean(existingAgentMsg),
@@ -230,17 +213,8 @@ export const createRuntimeEventBridge = (options: RuntimeEventBridgeOptions) => 
         void options.scrollToBottom()
       }
 
-      try {
-        await options.persistRuntimeUserMessage(threadId, userMsg, {
-          blocks,
-          agentRunId: event.agentRunId,
-          agentTurnId: event.agentTurnId,
-          runtimeSequence: event.sequence,
-          createdAt: event.timestamp
-        })
-      } catch (error) {
-        console.error('Persist queued user message failed', error)
-      }
+      // The main-process runtime store persists the consumed user message when
+      // agent.message.started arrives. Writing here creates a duplicate on retry.
       return
     }
 
@@ -301,7 +275,7 @@ export const createRuntimeEventBridge = (options: RuntimeEventBridgeOptions) => 
         threadId,
         'debugUiUserMessageStarted',
         {
-                    agentRunId: event.agentRunId ?? null,
+          agentRunId: event.agentRunId ?? null,
           agentTurnId: event.agentTurnId ?? null,
           runtimeSequence: event.sequence,
           matchedExisting: Boolean(existingAgentMsg),
@@ -318,23 +292,13 @@ export const createRuntimeEventBridge = (options: RuntimeEventBridgeOptions) => 
         void options.scrollToBottom()
       }
 
-      try {
-        await options.persistRuntimeUserMessage(threadId, userMsg, {
-          blocks,
-          agentRunId: event.agentRunId,
-          agentTurnId: event.agentTurnId,
-          runtimeSequence: event.sequence,
-          createdAt: event.timestamp
-        })
-      } catch (error) {
-        console.error('Persist queued user message failed', error)
-      }
+      // See queue.consumed above: persistence and retry relinking have one
+      // authoritative owner in the main-process runtime store.
       return
     }
 
     if (event.type === 'agent.message.started' && event.message.role === 'assistant') {
-      const run =
-        options.getAgentRunMap(threadId).get(event.agentRunId) ?? options.getActiveRun(threadId)
+      const run = options.getAgentRunMap(threadId).get(event.agentRunId)
       if (!run) return
       const turn = getRunTurnById(run, event.agentTurnId)
       const assistant = options.syncAssistantTurnMessage(targetMessages, run, turn, true)
@@ -444,8 +408,7 @@ export const createRuntimeEventBridge = (options: RuntimeEventBridgeOptions) => 
 
     if (event.type === 'agent.message.delta') {
       options.setThreadStreaming(threadId, true)
-      const run =
-        options.getAgentRunMap(threadId).get(event.agentRunId) ?? options.getActiveRun(threadId)
+      const run = options.getAgentRunMap(threadId).get(event.agentRunId)
       if (!run) return
       applyMessageDeltaToRun(run, event)
       options.setActiveRun(threadId, run)
@@ -504,8 +467,7 @@ export const createRuntimeEventBridge = (options: RuntimeEventBridgeOptions) => 
       event.type === 'agent.tool.finished'
     ) {
       options.setThreadStreaming(threadId, true)
-      const run =
-        options.getAgentRunMap(threadId).get(event.agentRunId) ?? options.getActiveRun(threadId)
+      const run = options.getAgentRunMap(threadId).get(event.agentRunId)
       if (!run) return
       syncToolProjectionIntoRun(run, event.tool)
 

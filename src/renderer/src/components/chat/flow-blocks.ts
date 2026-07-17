@@ -42,6 +42,12 @@ export type TextRenderBlock = {
   isActive?: boolean
 }
 
+export type RunFinalTextRenderBlock = {
+  kind: 'run_final_text'
+  id: string
+  text: string
+}
+
 export type ToolRenderBlock = {
   kind: 'tool'
   id: string
@@ -144,6 +150,7 @@ export type ToolImageRenderBlock = {
 export type MessageRenderBlock =
   | ThinkingRenderBlock
   | TextRenderBlock
+  | RunFinalTextRenderBlock
   | ToolRenderBlock
   | QuestionAnswerRenderBlock
   | QuestionnaireQuestionRenderBlock
@@ -443,8 +450,15 @@ export const buildMessageRenderFlow = (params: {
   turns?: AgentTurn[]
   messageWidget?: ChatWidget
   includeMessageWidget?: boolean
+  includeRunFinalText?: boolean
 }): MessageRenderFlow => {
-  const { run, turns = run.turns, messageWidget, includeMessageWidget = true } = params
+  const {
+    run,
+    turns = run.turns,
+    messageWidget,
+    includeMessageWidget = true,
+    includeRunFinalText = false
+  } = params
   const toolSteps = turns.flatMap((turn) => turn.toolCalls).map((call) => toToolStep(call))
   const fileChangeEntries = buildFileChangeEntries(toolSteps)
   const fileById = new Map(fileChangeEntries.map((entry) => [entry.id, entry]))
@@ -665,12 +679,30 @@ export const buildMessageRenderFlow = (params: {
     }
   }
 
-  if (blocks.length === 0 && run.text.trim() && (turns.length === 0 || run.status !== 'running')) {
-    blocks.push({
-      kind: 'text',
-      id: `text:fallback:${run.id}`,
-      text: run.text
-    })
+  // `run.text` is updated by every text delta while a run is streaming, so it is not a
+  // final-answer signal until the run reaches a terminal state. On completion it usually
+  // equals the final turn's text item: promote that existing item instead of appending a
+  // duplicate final block. If it differs, it is a genuinely separate run-level answer.
+  if (includeRunFinalText && run.status !== 'running' && run.text.trim()) {
+    const finalText = run.text.trim()
+    const matchingTextBlockIndex = blocks.findLastIndex(
+      (block) => block.kind === 'text' && block.text.trim() === finalText
+    )
+
+    if (matchingTextBlockIndex >= 0) {
+      const matchingTextBlock = blocks[matchingTextBlockIndex] as TextRenderBlock
+      blocks[matchingTextBlockIndex] = {
+        kind: 'run_final_text',
+        id: matchingTextBlock.id,
+        text: run.text
+      }
+    } else {
+      blocks.push({
+        kind: 'run_final_text',
+        id: `run-final-text:${run.id}`,
+        text: run.text
+      })
+    }
   }
 
   const normalizedBlocks = blocks.filter((block, index, list) => {
@@ -681,6 +713,7 @@ export const buildMessageRenderFlow = (params: {
   const currentTurn = [...turns].reverse().find((t) => t.status === 'running') ?? null
 
   const belongsToTurn = (block: MessageRenderBlock, turn: AgentTurn | null): boolean =>
+    block.kind !== 'run_final_text' &&
     Boolean(
       turn && (block.turnId === turn.id || (block.turnId == null && block.turnIndex === turn.index))
     )
@@ -695,6 +728,8 @@ export const buildMessageRenderFlow = (params: {
     const isRunActive = run.status === 'running'
     const isCurrentTurnBlock = belongsToTurn(block, currentTurn)
     const isLastCurrentTurnBlock = block === lastCurrentTurnBlock
+
+    if (block.kind === 'run_final_text') return
 
     if (block.kind === 'thinking') {
       block.isActive = Boolean(

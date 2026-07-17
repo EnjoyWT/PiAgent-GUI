@@ -97,7 +97,8 @@ const useFullWidthAssistantShell = computed(
 )
 const assistantTurns = computed<AgentTurn[]>(() => {
   if (!useAssistantRunFlow.value || !props.run) return []
-  // 一个 run 只允许最外层 owner 渲染完整 flow，避免每个 turn 各自生成汇总入口。
+  // 一个 run 只允许最后一个 turn 的消息承载完整聚合 flow；最终正文出现后，
+  // FlowRenderer 再统一折叠此前所有 turn 的中间过程。
   if (props.run.turns.length > 1 && !isAssistantRunFlowOwner.value) return []
   if (isAssistantRunFlowOwner.value) return props.run.turns
   if (props.agentTurnId) {
@@ -112,7 +113,8 @@ const assistantFlow = computed(() =>
         run: props.run,
         turns: assistantTurns.value,
         messageWidget: props.widget,
-        includeMessageWidget: props.showWidget !== false
+        includeMessageWidget: props.showWidget !== false,
+        includeRunFinalText: isAssistantRunFlowOwner.value || props.run.turns.length <= 1
       })
     : null
 )

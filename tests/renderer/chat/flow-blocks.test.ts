@@ -139,6 +139,98 @@ test('does not fall back to prior run text while the current running turn has no
   assert.deepEqual(flow.blocks, [])
 })
 
+test('does not use run-level fallback text for an explicitly scoped empty turn', () => {
+  const emptyTurn = {
+    id: 'turn-2',
+    index: 1,
+    status: 'done' as const,
+    text: '',
+    toolCalls: [],
+    timelineItems: [],
+    startedAt: 30,
+    endedAt: 40
+  }
+  const run = createRun({
+    status: 'done',
+    text: '属于其他 turn 的 run 正文',
+    turns: [
+      {
+        id: 'turn-1',
+        index: 0,
+        status: 'done',
+        text: '属于其他 turn 的 run 正文',
+        toolCalls: [],
+        timelineItems: [
+          {
+            id: 'text-1',
+            kind: 'text',
+            text: '属于其他 turn 的 run 正文',
+            startedAt: 10,
+            endedAt: 20
+          }
+        ],
+        startedAt: 10,
+        endedAt: 20
+      },
+      emptyTurn
+    ]
+  })
+
+  const flow = buildMessageRenderFlow({ run, turns: [emptyTurn] })
+
+  assert.deepEqual(flow.blocks, [])
+})
+
+test('keeps render blocks scoped to the requested turn in a multi-turn run', () => {
+  const firstTurn = {
+    id: 'turn-1',
+    index: 0,
+    status: 'done' as const,
+    text: '第一轮回答',
+    toolCalls: [],
+    timelineItems: [
+      {
+        id: 'text-1',
+        kind: 'text' as const,
+        text: '第一轮回答',
+        startedAt: 10,
+        endedAt: 20
+      }
+    ],
+    startedAt: 10,
+    endedAt: 20
+  }
+  const secondTurn = {
+    id: 'turn-2',
+    index: 1,
+    status: 'running' as const,
+    text: '第二轮回答',
+    toolCalls: [],
+    timelineItems: [
+      {
+        id: 'text-2',
+        kind: 'text' as const,
+        text: '第二轮回答',
+        startedAt: 30
+      }
+    ],
+    startedAt: 30
+  }
+  const run = createRun({ turns: [firstTurn, secondTurn], text: '第二轮回答' })
+
+  const firstTurnFlow = buildMessageRenderFlow({ run, turns: [firstTurn] })
+  const secondTurnFlow = buildMessageRenderFlow({ run, turns: [secondTurn] })
+
+  assert.deepEqual(
+    firstTurnFlow.blocks.map((block) => [block.turnId, block.kind, 'text' in block ? block.text : '']),
+    [['turn-1', 'text', '第一轮回答']]
+  )
+  assert.deepEqual(
+    secondTurnFlow.blocks.map((block) => [block.turnId, block.kind, 'text' in block ? block.text : '']),
+    [['turn-2', 'text', '第二轮回答']]
+  )
+})
+
 test('does not show thinking placeholder while a running turn has visible text output', () => {
   const run = createRun({
     status: 'running',
@@ -1006,21 +1098,137 @@ test('maps edit and write tools with file paths into file blocks', () => {
   assert.equal(writeBlock.entry.fileName, 'bar.ts')
 })
 
-test('falls back to run text when there are no timeline blocks', () => {
+test('renders terminal run text as a dedicated final-answer block', () => {
   const run = createRun({
     status: 'done',
     text: '仅有最终正文'
   })
 
+  const flow = buildMessageRenderFlow({ run, includeRunFinalText: true })
+
+  assert.deepEqual(flow.blocks.map((block) => block.kind), ['run_final_text'])
+  assert.equal(flow.blocks[0]?.kind, 'run_final_text')
+  if (flow.blocks[0]?.kind === 'run_final_text') {
+    assert.equal(flow.blocks[0].text, '仅有最终正文')
+  }
+})
+
+test('does not create a final-answer block from streaming run text', () => {
+  const run = createRun({
+    status: 'running',
+    // This mirrors the renderer projection: every turn delta updates run.text.
+    text: '仍在执行中的 turn 正文',
+    turns: [
+      {
+        id: 'turn-1',
+        index: 0,
+        status: 'done',
+        text: '前一个 turn 的过程文本',
+        toolCalls: [],
+        timelineItems: [
+          {
+            id: 'turn-text-1',
+            kind: 'text',
+            text: '前一个 turn 的过程文本',
+            startedAt: 10,
+            endedAt: 20
+          }
+        ],
+        startedAt: 10,
+        endedAt: 20
+      },
+      {
+        id: 'turn-2',
+        index: 1,
+        status: 'running',
+        text: '仍在执行中的 turn 正文',
+        toolCalls: [],
+        timelineItems: [
+          {
+            id: 'turn-text-2',
+            kind: 'text',
+            text: '仍在执行中的 turn 正文',
+            startedAt: 30
+          }
+        ],
+        startedAt: 30
+      }
+    ]
+  })
+
   const flow = buildMessageRenderFlow({ run })
 
-  assert.deepEqual(
-    flow.blocks.map((block) => block.kind),
-    ['text']
-  )
-  assert.equal(flow.blocks[0]?.kind, 'text')
-  if (flow.blocks[0]?.kind === 'text') {
-    assert.equal(flow.blocks[0].text, '仅有最终正文')
+  assert.deepEqual(flow.blocks.map((block) => block.kind), ['text', 'text'])
+  assert.equal(flow.blocks.some((block) => block.kind === 'run_final_text'), false)
+})
+
+test('promotes the matching final turn text instead of rendering it twice', () => {
+  const run = createRun({
+    status: 'done',
+    text: '最终正文',
+    turns: [
+      {
+        id: 'turn-1',
+        index: 0,
+        status: 'done',
+        text: '最终正文',
+        toolCalls: [],
+        timelineItems: [
+          {
+            id: 'turn-text-1',
+            kind: 'text',
+            text: '最终正文',
+            startedAt: 10,
+            endedAt: 20
+          }
+        ],
+        startedAt: 10,
+        endedAt: 20
+      }
+    ]
+  })
+
+  const flow = buildMessageRenderFlow({ run, includeRunFinalText: true })
+
+  assert.deepEqual(flow.blocks.map((block) => block.kind), ['run_final_text'])
+  assert.equal(flow.blocks[0]?.kind, 'run_final_text')
+  if (flow.blocks[0]?.kind === 'run_final_text') {
+    assert.equal(flow.blocks[0].text, '最终正文')
+  }
+})
+
+test('appends the terminal run answer after all turn process blocks', () => {
+  const run = createRun({
+    status: 'done',
+    text: 'run 的最终正文',
+    turns: [
+      {
+        id: 'turn-1',
+        index: 0,
+        status: 'done',
+        text: 'turn 的过程正文',
+        toolCalls: [],
+        timelineItems: [
+          {
+            id: 'turn-text-1',
+            kind: 'text',
+            text: 'turn 的过程正文',
+            startedAt: 10,
+            endedAt: 20
+          }
+        ],
+        startedAt: 10,
+        endedAt: 20
+      }
+    ]
+  })
+
+  const flow = buildMessageRenderFlow({ run, includeRunFinalText: true })
+
+  assert.deepEqual(flow.blocks.map((block) => block.kind), ['text', 'run_final_text'])
+  assert.equal(flow.blocks[1]?.kind, 'run_final_text')
+  if (flow.blocks[1]?.kind === 'run_final_text') {
+    assert.equal(flow.blocks[1].text, 'run 的最终正文')
   }
 })
 

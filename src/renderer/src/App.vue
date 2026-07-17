@@ -207,8 +207,7 @@ import type {
   AgentRun,
   AgentTurn,
   ChatWidget,
-  ChatMessage,
-  ChatContentBlock
+  ChatMessage
 } from './components/chat/types'
 import type { ConversationSearchResultItem } from '../../main/core-v2/domain'
 import type { AgentAppEvent, AgentThreadProjection } from '@shared/agent-runtime'
@@ -227,8 +226,6 @@ import {
   turnHasVisibleAssistantOutput
 } from './utils/app-runtime'
 import { resolveInlineWidgetFromMessage } from './utils/inline-widget'
-import { shouldPersistRuntimeUserMessageToLocalThread } from './utils/local-thread-persistence'
-import { buildMessageContentJson, toPlainContentJson } from './utils/app-chat-helpers'
 import { usePendingInteractionState } from './utils/app-pending-state'
 import type { PendingQuestionEvent } from '@shared/question-tool'
 import type { PendingQuestionnaireEvent } from '@shared/questionnaire-tool'
@@ -878,54 +875,6 @@ const scrollToBottom = async (options?: { force?: boolean }): Promise<void> => {
   })
 }
 
-const persistRuntimeUserMessage = async (
-  threadId: string,
-  message: ChatMessage,
-  options: {
-    blocks: ChatContentBlock[]
-    agentRunId?: string | null
-    agentTurnId?: string | null
-    runtimeSequence?: number | null
-    createdAt?: string | number | Date | null
-  }
-): Promise<void> => {
-  if (
-    !shouldPersistRuntimeUserMessageToLocalThread(threadId, (candidateThreadId) =>
-      Boolean(getThreadRowById(candidateThreadId))
-    )
-  ) {
-    return
-  }
-  if (message.messageKind === 'context_compaction') return
-
-  if (!message.id) {
-    const row = await window.api.coreV2.localMessages.add(
-      threadId,
-      'user',
-      message.content,
-      options.agentRunId,
-      toPlainContentJson(buildMessageContentJson(options.blocks)),
-      {
-        messageKind: message.messageKind ?? 'chat',
-        includeInAgentContext: message.includeInAgentContext ?? true,
-        agentTurnId: options.agentTurnId ?? null,
-        runtimeSequence: options.runtimeSequence ?? null,
-        createdAt: options.createdAt
-      }
-    )
-    message.id = row.id
-    message.createdAt = row.created_at
-    return
-  }
-
-  await window.api.coreV2.localMessages.updateRuntimeLink(message.id, {
-    agentRunId: options.agentRunId ?? null,
-    agentTurnId: options.agentTurnId ?? null,
-    runtimeSequence: options.runtimeSequence ?? null,
-    createdAt: options.createdAt
-  })
-}
-
 const switchThread = async (thread: ThreadRow): Promise<void> => {
   if (activeThread.value?.id === thread.id) return
   const prevThreadId = activeThread.value?.id
@@ -1249,7 +1198,6 @@ onMounted(async () => {
     finalizeAssistantMessageForThread,
     applyInlineWidgetToAssistantMessage,
     onRunSettled,
-    persistRuntimeUserMessage,
     scrollToBottom
   })
   offAgentEvent = window.api.runtime.onEvent(async (event) => {
