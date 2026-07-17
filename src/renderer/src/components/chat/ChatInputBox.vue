@@ -18,6 +18,7 @@ import {
   Gauge,
   RefreshCw,
   Settings2,
+  ShieldCheck,
   Check,
   Eye,
   EyeOff
@@ -530,6 +531,13 @@ const showMcpMenu = ref(false)
 const mcpButtonRef = ref<HTMLElement | null>(null)
 const mcpMenuRef = ref<HTMLElement | null>(null)
 const mcpMenuStyle = ref<Record<string, string>>({})
+const showSandboxMenu = ref(false)
+const sandboxButtonRef = ref<HTMLElement | null>(null)
+const sandboxMenuRef = ref<HTMLElement | null>(null)
+const sandboxMenuStyle = ref<Record<string, string>>({})
+const sandboxLoading = ref(false)
+const sandboxConversationId = ref<string | null>(null)
+const sandboxMode = ref<'sandbox' | 'full'>('full')
 const showThinkingMenu = ref(false)
 const thinkingButtonRef = ref<HTMLElement | null>(null)
 const thinkingMenuRef = ref<HTMLElement | null>(null)
@@ -716,6 +724,62 @@ const applyThinkingMenuPosition = () => {
   }
 }
 
+const applySandboxMenuPosition = () => {
+  const rect = sandboxButtonRef.value?.getBoundingClientRect()
+  if (!rect) return
+  const width = 176
+  const margin = 12
+  const left = Math.min(Math.max(rect.left, margin), window.innerWidth - width - margin)
+  sandboxMenuStyle.value = {
+    left: `${left}px`,
+    top: `${rect.top - 8}px`,
+    width: `${width}px`,
+    transform: 'translateY(-100%)'
+  }
+}
+
+const loadWorkspaceSandbox = async () => {
+  const workspacePath = String(props.workspacePath ?? '').trim()
+  if (!workspacePath || sandboxLoading.value) return
+  sandboxLoading.value = true
+  try {
+    const resolved = props.threadId
+      ? await window.api.coreV2.conversations.getLocalByThread(props.threadId)
+      : null
+    sandboxConversationId.value = resolved?.conversation.id ?? null
+    sandboxMode.value =
+      resolved?.conversation.executionOverride?.sandboxPolicyId === 'sandbox' ? 'sandbox' : 'full'
+  } finally {
+    sandboxLoading.value = false
+  }
+}
+
+const toggleSandboxMenu = async () => {
+  if (showSandboxMenu.value) {
+    showSandboxMenu.value = false
+    return
+  }
+  applySandboxMenuPosition()
+  showModelMenu.value = false
+  showMcpMenu.value = false
+  showThinkingMenu.value = false
+  showSandboxMenu.value = true
+  await loadWorkspaceSandbox()
+}
+
+const setSandboxMode = async (mode: 'sandbox' | 'full') => {
+  if (sandboxLoading.value) return
+  if (!sandboxConversationId.value) await loadWorkspaceSandbox()
+  if (!sandboxConversationId.value) return
+  sandboxLoading.value = true
+  try {
+    await window.api.coreV2.conversations.setSandboxMode(sandboxConversationId.value, mode)
+    sandboxMode.value = mode
+  } finally {
+    sandboxLoading.value = false
+  }
+}
+
 const applyMcpMenuPosition = () => {
   const rect = mcpButtonRef.value?.getBoundingClientRect()
   if (!rect) return
@@ -864,12 +928,18 @@ const handleClickOutside = (e: MouseEvent) => {
       showThinkingMenu.value = false
     }
   }
+  if (showSandboxMenu.value) {
+    if (!sandboxButtonRef.value?.contains(target) && !sandboxMenuRef.value?.contains(target)) {
+      showSandboxMenu.value = false
+    }
+  }
 }
 
 const handleViewportChange = () => {
   showModelMenu.value = false
   showMcpMenu.value = false
   showThinkingMenu.value = false
+  showSandboxMenu.value = false
   capabilityTooltip.value.visible = false
 }
 
@@ -878,6 +948,12 @@ const handleKeyDown = (e: KeyboardEvent) => {
     previewUrl.value = null
   }
 }
+
+watch(
+  () => `${props.threadId ?? ''}|${props.workspacePath ?? ''}`,
+  () => void loadWorkspaceSandbox(),
+  { immediate: true }
+)
 
 onMounted(() => {
   void loadWorkspaceMcpServers()
@@ -1081,6 +1157,18 @@ const showContextUsageTooltip = (event: MouseEvent) => {
             </button> -->
 
             <button
+              ref="sandboxButtonRef"
+              class="relative w-8 h-8 rounded-lg bg-(--chat-input-toolbar-btn-bg,#fcfcfd) hover:bg-(--theme-bg-hover-btn) flex items-center justify-center"
+              :class="sandboxMode === 'sandbox' ? 'text-emerald-600' : 'text-rose-600'"
+              type="button"
+              aria-label="沙盒权限"
+              title="沙盒权限"
+              @click="toggleSandboxMenu"
+            >
+              <ShieldCheck :size="16" />
+            </button>
+
+            <button
               ref="mcpButtonRef"
               class="relative w-8 h-8 rounded-lg bg-(--chat-input-toolbar-btn-bg,#fcfcfd) hover:bg-(--theme-bg-hover-btn) flex items-center justify-center"
               type="button"
@@ -1212,6 +1300,44 @@ const showContextUsageTooltip = (event: MouseEvent) => {
   </div>
 
   <Teleport to="body">
+    <Transition name="model-menu">
+      <div
+        v-if="showSandboxMenu"
+        ref="sandboxMenuRef"
+        class="fixed z-80 overflow-hidden rounded-2xl border border-(--theme-border-base) bg-(--theme-bg-main) shadow-[0_18px_50px_rgba(0,0,0,0.3)]"
+        :style="sandboxMenuStyle"
+      >
+        <div :class="{ 'pointer-events-none opacity-60': sandboxLoading }">
+          <button
+            type="button"
+            class="flex w-full items-center justify-between px-3.5 py-2.5 text-left text-[13px] font-medium transition-colors border-b border-(--theme-border-base)"
+            :class="
+              sandboxMode === 'sandbox'
+                ? 'bg-(--theme-bg-hover-btn) text-(--theme-text-bright)'
+                : 'text-(--theme-text-main) hover:bg-(--theme-bg-hover-btn)'
+            "
+            @click="setSandboxMode('sandbox')"
+          >
+            <span>沙盒模式</span>
+            <Check v-if="sandboxMode === 'sandbox'" :size="14" class="text-(--theme-accent)" />
+          </button>
+          <button
+            type="button"
+            class="flex w-full items-center justify-between px-3.5 py-2.5 text-left text-[13px] font-medium transition-colors"
+            :class="
+              sandboxMode === 'full'
+                ? 'bg-(--theme-bg-hover-btn) text-rose-600'
+                : 'text-rose-600 hover:bg-(--theme-bg-hover-btn)'
+            "
+            @click="setSandboxMode('full')"
+          >
+            <span>完全模式</span>
+            <Check v-if="sandboxMode === 'full'" :size="14" />
+          </button>
+        </div>
+      </div>
+    </Transition>
+
     <Transition name="model-menu">
       <div
         v-if="showMcpMenu"

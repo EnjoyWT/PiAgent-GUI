@@ -1,6 +1,16 @@
 import { ipcMain } from 'electron'
 import type { ChatMessageContent } from '@shared/chat-content'
 import { getCoreV2Service } from '../core-v2/sqlite-db.ts'
+import {
+  deleteWorkspaceSandboxGrant,
+  listWorkspaceSandboxGrants,
+  upsertWorkspaceSandboxGrant
+} from '../db/config-db.ts'
+import {
+  normalizeExternalSandboxGrant,
+  normalizeWorkspaceSandboxPath,
+  readProjectSandboxManifest
+} from '../sandbox/workspace-sandbox.ts'
 import { getLocalThreadHostService } from '../core-v2/local-thread-host.ts'
 import {
   getLocalConversationByThreadId,
@@ -39,6 +49,43 @@ export function setupCoreV2Handlers(): void {
   )
   ipcMain.handle('core-v2:conversations:get', (_, conversationId: string) =>
     getCoreV2Service().getConversation(conversationId)
+  )
+  ipcMain.handle(
+    'core-v2:conversations:set-sandbox-mode',
+    (_, conversationId: string, mode: 'sandbox' | 'full') => {
+      const core = getCoreV2Service()
+      const conversation = core.getConversation(conversationId)
+      if (!conversation) throw new Error(`Unknown conversation: ${conversationId}`)
+      return core.updateConversation({
+        conversationId,
+        executionOverride: {
+          ...(conversation.executionOverride ?? {}),
+          sandboxPolicyId: mode === 'sandbox' ? 'sandbox' : 'workspace-write'
+        }
+      })
+    }
+  )
+  ipcMain.handle('workspace-sandbox:list-grants', (_, workspacePath: string) =>
+    listWorkspaceSandboxGrants(normalizeWorkspaceSandboxPath(workspacePath))
+  )
+  ipcMain.handle(
+    'workspace-sandbox:grant',
+    (_, workspacePath: string, grantedPath: string, access: 'read' | 'write') => {
+      if (access !== 'read' && access !== 'write') throw new Error('Invalid sandbox access mode')
+      const normalizedWorkspacePath = normalizeWorkspaceSandboxPath(workspacePath)
+      const normalizedPath = normalizeExternalSandboxGrant(normalizedWorkspacePath, grantedPath)
+      upsertWorkspaceSandboxGrant(normalizedWorkspacePath, normalizedPath, access)
+      return listWorkspaceSandboxGrants(normalizedWorkspacePath)
+    }
+  )
+  ipcMain.handle('workspace-sandbox:revoke', (_, workspacePath: string, grantedPath: string) => {
+    const normalizedWorkspacePath = normalizeWorkspaceSandboxPath(workspacePath)
+    const normalizedPath = normalizeExternalSandboxGrant(normalizedWorkspacePath, grantedPath)
+    deleteWorkspaceSandboxGrant(normalizedWorkspacePath, normalizedPath)
+    return listWorkspaceSandboxGrants(normalizedWorkspacePath)
+  })
+  ipcMain.handle('workspace-sandbox:read-project-manifest', (_, workspacePath: string) =>
+    readProjectSandboxManifest(normalizeWorkspaceSandboxPath(workspacePath))
   )
   ipcMain.handle('core-v2:conversations:get-local-by-thread', (_, threadId: string) =>
     getLocalConversationByThreadId(threadId)
@@ -87,15 +134,12 @@ export function setupCoreV2Handlers(): void {
   ipcMain.handle('core-v2:messages:search', (_, input: ConversationSearchInput) =>
     getCoreV2Service().searchConversationMessages(input)
   )
-  ipcMain.handle(
-    'core-v2:messages:list-conversations',
-    (_, input: ListConversationsInput) =>
-      getCoreV2Service().listConversations(input)
+  ipcMain.handle('core-v2:messages:list-conversations', (_, input: ListConversationsInput) =>
+    getCoreV2Service().listConversations(input)
   )
   ipcMain.handle(
     'core-v2:messages:list-conversation-messages',
-    (_, input: ListConversationMessagesInput) =>
-      getCoreV2Service().listConversationMessages(input)
+    (_, input: ListConversationMessagesInput) => getCoreV2Service().listConversationMessages(input)
   )
   ipcMain.handle(
     'core-v2:messages:list-all-messages',

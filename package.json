@@ -31,6 +31,10 @@
     "build:linux": "pnpm run build && electron-builder --linux"
   },
   "dependencies": {
+    "@anthropic-ai/sandbox-runtime": "0.0.65",
+    "@earendil-works/pi-agent-core": "0.80.7",
+    "@earendil-works/pi-ai": "0.80.7",
+    "@earendil-works/pi-coding-agent": "0.80.7",
     "@earendil-works/pi-tui": "0.80.7",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
@@ -106,10 +110,7 @@
     "which": "5.0.0",
     "yl-animated-caret": "github:EnjoyWT/YLAnimatedCaret",
     "zod": "4.3.6",
-    "zod-to-json-schema": "3.25.1",
-    "@earendil-works/pi-agent-core": "0.80.7",
-    "@earendil-works/pi-ai": "0.80.7",
-    "@earendil-works/pi-coding-agent": "0.80.7"
+    "zod-to-json-schema": "3.25.1"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "3.0.0",

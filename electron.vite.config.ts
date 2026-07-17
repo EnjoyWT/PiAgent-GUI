@@ -36,6 +36,9 @@ export default defineConfig({
     }
   },
   renderer: {
+    server: {
+      hmr: false
+    },
     optimizeDeps: {
       exclude: ['yl-animated-caret']
     },

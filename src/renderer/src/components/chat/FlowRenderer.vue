@@ -101,9 +101,22 @@ const intermediateProcessCollapsed = ref(false)
 const intermediateProcessUserToggled = ref(false)
 
 const finalAnswerBlockId = computed(() => {
+  let maxTurnIndex = -1
+  for (const block of props.blocks) {
+    if (block.turnIndex !== undefined && block.turnIndex > maxTurnIndex) {
+      maxTurnIndex = block.turnIndex
+    }
+  }
+
   for (let index = props.blocks.length - 1; index >= 0; index -= 1) {
     const block = props.blocks[index]
-    if (block?.kind === 'text' && block.text.trim()) return block.id
+    if (
+      block?.kind === 'text' &&
+      block.text.trim() &&
+      (block.turnIndex === undefined || block.turnIndex === maxTurnIndex)
+    ) {
+      return block.id
+    }
   }
   return null
 })

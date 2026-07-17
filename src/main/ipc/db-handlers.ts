@@ -174,6 +174,12 @@ export function setupDbHandlers(): void {
     })
     return result.canceled ? null : result.filePaths[0]
   })
+  ipcMain.handle('dialog:open-file-or-folder', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile', 'openDirectory']
+    })
+    return result.canceled ? null : result.filePaths[0]
+  })
 
   ipcMain.handle(
     'dialog:save-file',

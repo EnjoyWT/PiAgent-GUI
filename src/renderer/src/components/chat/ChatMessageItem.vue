@@ -387,6 +387,11 @@ watch(isMoreOpen, (open, _prev, onCleanup) => {
 
 <template>
   <div
+    v-if="
+      !useAssistantRunFlow ||
+      isAssistantRunFlowOwner ||
+      (props.run?.turns.length ?? 0) <= 1
+    "
     ref="messageRootRef"
     data-testid="message-item"
     :data-message-id="id"

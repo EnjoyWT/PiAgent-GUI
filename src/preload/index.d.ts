@@ -4,7 +4,8 @@ import type {
   ThreadRow as DBThreadRow,
   WorkspaceRow as DBWorkspaceRow,
   WorkspaceSettingsRow as DBWorkspaceSettingsRow,
-  WorkspaceMcpServerRow as DBWorkspaceMcpServerRow
+  WorkspaceMcpServerRow as DBWorkspaceMcpServerRow,
+  WorkspaceSandboxGrantRow as DBWorkspaceSandboxGrantRow
 } from './db-types'
 import type {
   AgentAppEvent,
@@ -180,6 +181,7 @@ declare global {
       }
       dialog: {
         openFolder: () => Promise<string | null>
+        openFileOrFolder: () => Promise<string | null>
         saveFile: (payload: {
           content: string
           defaultPath?: string
@@ -413,6 +415,10 @@ declare global {
             input: ResolveConversationForEnvelopeInput
           ) => Promise<ResolveConversationForEnvelopeResult>
           get: (conversationId: string) => Promise<Conversation | null>
+          setSandboxMode: (
+            conversationId: string,
+            mode: 'sandbox' | 'full'
+          ) => Promise<Conversation>
           getLocalByThread: (threadId: string) => Promise<{
             conversation: Conversation
             binding: ConversationBinding
@@ -421,6 +427,30 @@ declare global {
           listWindows: (
             sourceKind?: 'local' | 'im' | 'all'
           ) => Promise<ConversationWindowProjection[]>
+        }
+        workspaceSandbox: {
+          listGrants: (workspacePath: string) => Promise<DBWorkspaceSandboxGrantRow[]>
+          grant: (
+            workspacePath: string,
+            grantedPath: string,
+            access: 'read' | 'write'
+          ) => Promise<DBWorkspaceSandboxGrantRow[]>
+          revoke: (
+            workspacePath: string,
+            grantedPath: string
+          ) => Promise<DBWorkspaceSandboxGrantRow[]>
+          readProjectManifest: (workspacePath: string) => Promise<{
+            requestedGrants: Array<{ path: string; resolvedPath: string; access: 'read' | 'write' }>
+          } | null>
+          respondPermissionPrompt: (
+            requestId: string,
+            approved: boolean
+          ) => Promise<{ success: boolean }>
+          onPermissionPrompt: (
+            callback: (
+              prompt: import('../shared/workspace-sandbox-permission').WorkspaceSandboxPermissionPrompt
+            ) => void
+          ) => () => void
         }
         localThreads: {
           create: (
@@ -444,8 +474,12 @@ declare global {
           list: (conversationId: string) => Promise<ConversationMessage[]>
           search: (input: ConversationSearchInput) => Promise<ConversationSearchResult>
           listConversations: (input: ListConversationsInput) => Promise<ListConversationsResult>
-          listConversationMessages: (input: ListConversationMessagesInput) => Promise<ListConversationMessagesResult>
-          listAllConversationMessages: (input: ListAllConversationMessagesInput) => Promise<ListAllConversationMessagesResult>
+          listConversationMessages: (
+            input: ListConversationMessagesInput
+          ) => Promise<ListConversationMessagesResult>
+          listAllConversationMessages: (
+            input: ListAllConversationMessagesInput
+          ) => Promise<ListAllConversationMessagesResult>
         }
         localMessages: {
           add: (
@@ -753,16 +787,18 @@ declare global {
           consolidationModel: string
           dreamModel: string
         }>
-        setSettings: (patch: Partial<{
-          enabled: boolean
-          autoExtractEnabled: boolean
-          autoInjectEnabled: boolean
-          embeddingModel: string
-          injectionTokenBudget: number
-          extractionModel: string
-          consolidationModel: string
-          dreamModel: string
-        }>) => Promise<{
+        setSettings: (
+          patch: Partial<{
+            enabled: boolean
+            autoExtractEnabled: boolean
+            autoInjectEnabled: boolean
+            embeddingModel: string
+            injectionTokenBudget: number
+            extractionModel: string
+            consolidationModel: string
+            dreamModel: string
+          }>
+        ) => Promise<{
           enabled: boolean
           autoExtractEnabled: boolean
           autoInjectEnabled: boolean
@@ -773,7 +809,10 @@ declare global {
           dreamModel: string
         }>
         getThreadCapture: (threadId: string) => Promise<{ threadId: string; enabled: boolean }>
-        setThreadCapture: (threadId: string, enabled: boolean) => Promise<{ threadId: string; enabled: boolean }>
+        setThreadCapture: (
+          threadId: string,
+          enabled: boolean
+        ) => Promise<{ threadId: string; enabled: boolean }>
         stats: () => Promise<{
           entities: number
           activeClaims: number
@@ -784,26 +823,30 @@ declare global {
           relations: number
           vectors: number
         }>
-        listEntities: (limit?: number) => Promise<Array<{
-          id: string
-          type: string
-          canonicalName: string
-          aliases: string[]
-          summary: string | null
-          updatedAt: string
-        }>>
-        listActiveTasks: (limit?: number) => Promise<Array<{
-          id: string
-          conversationId: string
-          threadId: string | null
-          workspacePath: string | null
-          runIds: string[]
-          runCount: number
-          startedAt: string
-          updatedAt: string
-          triggerReason: string | null
-          lastUserText: string | null
-        }>>
+        listEntities: (limit?: number) => Promise<
+          Array<{
+            id: string
+            type: string
+            canonicalName: string
+            aliases: string[]
+            summary: string | null
+            updatedAt: string
+          }>
+        >
+        listActiveTasks: (limit?: number) => Promise<
+          Array<{
+            id: string
+            conversationId: string
+            threadId: string | null
+            workspacePath: string | null
+            runIds: string[]
+            runCount: number
+            startedAt: string
+            updatedAt: string
+            triggerReason: string | null
+            lastUserText: string | null
+          }>
+        >
         finalizeActiveTask: (taskId: string) => Promise<{
           insertedClaims: number
           skippedClaims: number
@@ -823,9 +866,15 @@ declare global {
           claims: KnowledgeSearchItem[]
           relations: KnowledgeRelation[]
         } | null>
-        listAllClaims: (options?: KnowledgeListQueryOptions) => Promise<KnowledgePagedResult<KnowledgeSearchItem>>
-        listAllPatterns: (options?: KnowledgeListQueryOptions) => Promise<KnowledgePagedResult<KnowledgeReflection>>
-        listAllProfiles: (options?: KnowledgeListQueryOptions) => Promise<KnowledgePagedResult<KnowledgeReflection>>
+        listAllClaims: (
+          options?: KnowledgeListQueryOptions
+        ) => Promise<KnowledgePagedResult<KnowledgeSearchItem>>
+        listAllPatterns: (
+          options?: KnowledgeListQueryOptions
+        ) => Promise<KnowledgePagedResult<KnowledgeReflection>>
+        listAllProfiles: (
+          options?: KnowledgeListQueryOptions
+        ) => Promise<KnowledgePagedResult<KnowledgeReflection>>
         deleteClaim: (claimId: string) => Promise<{ deleted: boolean }>
         deleteReflection: (reflectionId: string) => Promise<{ deleted: boolean }>
         deleteEntity: (entityId: string) => Promise<{ deleted: boolean }>
@@ -838,30 +887,34 @@ declare global {
           createdReflections: number
         }>
         embeddingModels: {
-          list: () => Promise<Array<{
-            key: string
-            label: string
-            providerName: string
-            description: string
-            sourceType: 'local' | 'remote'
-            approximateSizeMb: number | null
-            dimensions: number | null
-            languageHint: string | null
-            license: string | null
-            publicResourceUrl: string | null
-            downloaded: boolean
-            cacheDir: string | null
-          }>>
+          list: () => Promise<
+            Array<{
+              key: string
+              label: string
+              providerName: string
+              description: string
+              sourceType: 'local' | 'remote'
+              approximateSizeMb: number | null
+              dimensions: number | null
+              languageHint: string | null
+              license: string | null
+              publicResourceUrl: string | null
+              downloaded: boolean
+              cacheDir: string | null
+            }>
+          >
           download: (key: string) => Promise<{ success: boolean; error?: string }>
           openCacheDir: (key: string) => Promise<{ cacheDir: string }>
-          onDownloadProgress: (callback: (event: {
-            key: string
-            file: string
-            downloadedBytes: number
-            totalBytes: number | null
-            fileIndex: number
-            fileCount: number
-          }) => void) => () => void
+          onDownloadProgress: (
+            callback: (event: {
+              key: string
+              file: string
+              downloadedBytes: number
+              totalBytes: number | null
+              fileIndex: number
+              fileCount: number
+            }) => void
+          ) => () => void
         }
       }
     }

@@ -18,6 +18,14 @@ export interface WorkspaceMcpServerRow {
   updated_at: string
 }
 
+export interface WorkspaceSandboxGrantRow {
+  workspace_path: string
+  granted_path: string
+  access_mode: 'read' | 'write'
+  created_at: string | null
+  updated_at: string | null
+}
+
 export interface ThreadRow {
   id: string
   workspace_path: string
@@ -32,11 +40,7 @@ export interface MessageRow {
   thread_id: string
   role: 'user' | 'assistant' | 'tool'
   message_kind:
-    | 'chat'
-    | 'automation'
-    | 'question_answer'
-    | 'questionnaire_question'
-    | 'questionnaire_answer'
+    'chat' | 'automation' | 'question_answer' | 'questionnaire_question' | 'questionnaire_answer'
   include_in_agent_context: number
   content: string
   content_json: string | null

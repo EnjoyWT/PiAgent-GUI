@@ -235,6 +235,7 @@ import type { PendingQuestionnaireEvent } from '@shared/questionnaire-tool'
 import type { PendingSecretPromptEvent } from '@shared/secret-input'
 import type { ThreadPlanEvent } from '@shared/thread-plan'
 import type { SubagentPanelEvent } from '@shared/subagent-panel'
+import type { WorkspaceSandboxPermissionPrompt } from '@shared/workspace-sandbox-permission'
 import {
   appendChatInputHistoryEntry,
   createChatInputHistoryStore,
@@ -1044,6 +1045,7 @@ let offAgentDebugEvent: (() => void) | null = null
 let offOpenThread: (() => void) | null = null
 let offRuntimeInspectorThread: (() => void) | null = null
 let offQuestionEvent: (() => void) | null = null
+let offSandboxPermissionPrompt: (() => void) | null = null
 let offQuestionnaireEvent: (() => void) | null = null
 let offSecretEvent: (() => void) | null = null
 let offThreadPlanEvent: (() => void) | null = null
@@ -1282,6 +1284,23 @@ onMounted(async () => {
   })
 
   if (!isRuntimeInspectorPage.value) {
+    offSandboxPermissionPrompt = window.api.coreV2.workspaceSandbox.onPermissionPrompt(
+      async (prompt: WorkspaceSandboxPermissionPrompt) => {
+        const approved = await globalDialog.confirm({
+          title: '允许访问项目外路径？',
+          message: prompt.targetPath,
+          detail:
+            prompt.access === 'write'
+              ? '此操作将允许读取和修改该路径。'
+              : '此操作将允许读取该路径。',
+          confirmText: '允许',
+          cancelText: '拒绝',
+          danger: true
+        })
+        await window.api.coreV2.workspaceSandbox.respondPermissionPrompt(prompt.requestId, approved)
+      }
+    )
+
     offQuestionEvent = window.api.gateway.onQuestion((event: PendingQuestionEvent) => {
       if (event.type === 'set') {
         setPendingQuestionForThread(event.pending)
@@ -1413,6 +1432,7 @@ onUnmounted(() => {
   offOpenThread?.()
   offRuntimeInspectorThread?.()
   offQuestionEvent?.()
+  offSandboxPermissionPrompt?.()
   offQuestionnaireEvent?.()
   offSecretEvent?.()
   offThreadPlanEvent?.()

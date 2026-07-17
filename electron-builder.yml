@@ -11,6 +11,9 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+  # Sandbox Runtime resolves bundled platform helpers (seccomp / srt-win) from disk.
+  # Keep the package outside ASAR so OS-level command sandboxing also works in packaged apps.
+  - node_modules/@anthropic-ai/sandbox-runtime/**
 extraResources:
   - from: resources/bin
     to: bin

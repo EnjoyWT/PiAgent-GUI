@@ -21,8 +21,69 @@ import { createReadSkillTool } from '../../tools/read-skill-tool.ts'
 import { createKnowledgeSearchTool, createKnowledgeTraceTool } from '../../tools/knowledge-tools.ts'
 import { createConversationQueryTool } from '../../tools/conversation-query-tool.ts'
 import { getCoreV2Service } from '../../core-v2/sqlite-db.ts'
+import { listWorkspaceSandboxGrants } from '../../db/config-db.ts'
+import { createSandboxedBashOperations } from '../../sandbox/os-sandbox.ts'
+import { createNativeWorkspacePermissionBroker } from '../../sandbox/workspace-permission-broker.ts'
+import {
+  WorkspaceSandbox,
+  normalizeWorkspaceSandboxPath,
+  type SandboxMode,
+  type FileAccessMode
+} from '../../sandbox/workspace-sandbox.ts'
 
-const createTrackedEditTool = (workspacePath: string) => {
+const sandboxModeForPolicy = (sandboxPolicyId?: string | null): SandboxMode =>
+  sandboxPolicyId === 'sandbox' ? 'sandbox' : 'full'
+
+const createWorkspaceSandbox = (workspacePath: string, sandboxPolicyId?: string | null) => {
+  const mode = sandboxModeForPolicy(sandboxPolicyId)
+  const normalizedWorkspacePath = normalizeWorkspaceSandboxPath(workspacePath)
+  const grants =
+    mode === 'sandbox'
+      ? listWorkspaceSandboxGrants(normalizedWorkspacePath).map((grant) => ({
+          path: grant.granted_path,
+          access: grant.access_mode
+        }))
+      : []
+  return new WorkspaceSandbox({ workspacePath: normalizedWorkspacePath, mode, grants })
+}
+
+const guardPathTool = <T extends { execute: (...args: any[]) => Promise<any> }>(
+  tool: T,
+  workspacePath: string,
+  sandbox: WorkspaceSandbox,
+  access: FileAccessMode,
+  parameter: 'path'
+): T => {
+  const execute = tool.execute
+  return {
+    ...tool,
+    execute: async (
+      toolCallId: string,
+      params: Record<string, unknown>,
+      signal?: AbortSignal,
+      onUpdate?: unknown
+    ) => {
+      const value = params[parameter]
+      if (typeof value === 'string' && value.trim()) {
+        const decision = sandbox.decideFileAccess(path.resolve(workspacePath, value), access)
+        if (!decision.allowed) {
+          const approved = await createNativeWorkspacePermissionBroker().requestAccess({
+            workspacePath,
+            targetPath: decision.resolvedPath,
+            access,
+            source: 'file-tool'
+          })
+          if (!approved) {
+            throw new Error(`Sandbox access was denied for: ${decision.resolvedPath}`)
+          }
+        }
+      }
+      return await execute(toolCallId, params, signal, onUpdate as any)
+    }
+  } as T
+}
+
+const createTrackedEditTool = (workspacePath: string, sandbox: WorkspaceSandbox) => {
   const originalEdit = createEditTool(workspacePath)
   const execute: typeof originalEdit.execute = async (toolCallId, params, signal, onUpdate) => {
     const relPath = params.path.trim()
@@ -73,10 +134,10 @@ const createTrackedEditTool = (workspacePath: string) => {
       }
     }
   }
-  return { ...originalEdit, execute } as any
+  return guardPathTool({ ...originalEdit, execute } as any, workspacePath, sandbox, 'write', 'path')
 }
 
-const createTrackedWriteTool = (workspacePath: string) => {
+const createTrackedWriteTool = (workspacePath: string, sandbox: WorkspaceSandbox) => {
   const originalWrite = createWriteTool(workspacePath)
   const execute: typeof originalWrite.execute = async (toolCallId, params, signal, onUpdate) => {
     const relPath = params.path.trim()
@@ -112,19 +173,68 @@ const createTrackedWriteTool = (workspacePath: string) => {
       }
     }
   }
-  return { ...originalWrite, execute } as any
+  return guardPathTool(
+    { ...originalWrite, execute } as any,
+    workspacePath,
+    sandbox,
+    'write',
+    'path'
+  )
 }
 
 export class BaseRuntimeToolLayer {
-  getBaseBuiltinToolDefinitions(workspacePath: string): ToolDefinition[] {
+  getBaseBuiltinToolDefinitions(
+    workspacePath: string,
+    sandboxPolicyId?: string | null
+  ): ToolDefinition[] {
+    const sandbox = createWorkspaceSandbox(workspacePath, sandboxPolicyId)
     return [
-      createReadToolDefinition(workspacePath),
-      createBashToolDefinition(workspacePath),
-      createEditToolDefinition(workspacePath),
-      createWriteToolDefinition(workspacePath),
-      createFindToolDefinition(workspacePath),
-      createGrepToolDefinition(workspacePath),
-      createLsToolDefinition(workspacePath)
+      guardPathTool(
+        createReadToolDefinition(workspacePath),
+        workspacePath,
+        sandbox,
+        'read',
+        'path'
+      ),
+      createBashToolDefinition(
+        workspacePath,
+        sandbox.mode === 'sandbox'
+          ? {
+              operations: createSandboxedBashOperations(
+                normalizeWorkspaceSandboxPath(workspacePath)
+              )
+            }
+          : undefined
+      ),
+      guardPathTool(
+        createEditToolDefinition(workspacePath),
+        workspacePath,
+        sandbox,
+        'write',
+        'path'
+      ),
+      guardPathTool(
+        createWriteToolDefinition(workspacePath),
+        workspacePath,
+        sandbox,
+        'write',
+        'path'
+      ),
+      guardPathTool(
+        createFindToolDefinition(workspacePath),
+        workspacePath,
+        sandbox,
+        'read',
+        'path'
+      ),
+      guardPathTool(
+        createGrepToolDefinition(workspacePath),
+        workspacePath,
+        sandbox,
+        'read',
+        'path'
+      ),
+      guardPathTool(createLsToolDefinition(workspacePath), workspacePath, sandbox, 'read', 'path')
     ] as unknown as ToolDefinition[]
   }
 
@@ -134,12 +244,17 @@ export class BaseRuntimeToolLayer {
 
   async getFrameworkCustomToolGroups(
     workspacePath: string,
-    options: { extraMcpServers?: McpRuntimeServerConfig[]; getSkills?: () => Skill[] } = {}
+    options: {
+      extraMcpServers?: McpRuntimeServerConfig[]
+      getSkills?: () => Skill[]
+      sandboxPolicyId?: string | null
+    } = {}
   ): Promise<{ frameworkTools: ToolDefinition[]; mcpTools: ToolDefinition[] }> {
+    const sandbox = createWorkspaceSandbox(workspacePath, options.sandboxPolicyId)
     return {
       frameworkTools: [
-        createTrackedEditTool(workspacePath),
-        createTrackedWriteTool(workspacePath),
+        createTrackedEditTool(workspacePath, sandbox),
+        createTrackedWriteTool(workspacePath, sandbox),
         createComputerUseTool(),
         createWebSearchTool(),
         createWebFetchTool(),
@@ -155,8 +270,10 @@ export class BaseRuntimeToolLayer {
     }
   }
 
-  async getBaseCustomTools(workspacePath: string) {
-    const { frameworkTools, mcpTools } = await this.getFrameworkCustomToolGroups(workspacePath)
+  async getBaseCustomTools(workspacePath: string, sandboxPolicyId?: string | null) {
+    const { frameworkTools, mcpTools } = await this.getFrameworkCustomToolGroups(workspacePath, {
+      sandboxPolicyId
+    })
     return [...frameworkTools, ...mcpTools]
   }
 }

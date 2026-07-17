@@ -6,6 +6,7 @@ import type {
   WorkspaceRow,
   WorkspaceSettingsRow,
   WorkspaceMcpServerRow,
+  WorkspaceSandboxGrantRow,
   ConversationEventRow
 } from './db-types'
 import { shell } from 'electron'
@@ -104,6 +105,7 @@ import type {
 import type { DispatchDeliveryResult } from '../main/transport/outbound-dispatcher.ts'
 import type { TransportHostStatus } from '../main/transport/transport-host.ts'
 import type { ComputerUseSetupReport } from '../shared/computer-use-settings.ts'
+import type { WorkspaceSandboxPermissionPrompt } from '../shared/workspace-sandbox-permission.ts'
 
 type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
 type SkillDoctorEntry = {
@@ -168,6 +170,8 @@ const api = {
 
   dialog: {
     openFolder: (): Promise<string | null> => ipcRenderer.invoke('dialog:open-folder'),
+    openFileOrFolder: (): Promise<string | null> =>
+      ipcRenderer.invoke('dialog:open-file-or-folder'),
     saveFile: (payload: {
       content: string
       defaultPath?: string
@@ -501,6 +505,8 @@ const api = {
         ipcRenderer.invoke('core-v2:conversations:resolve-envelope', input),
       get: (conversationId: string): Promise<Conversation | null> =>
         ipcRenderer.invoke('core-v2:conversations:get', conversationId),
+      setSandboxMode: (conversationId: string, mode: 'sandbox' | 'full'): Promise<Conversation> =>
+        ipcRenderer.invoke('core-v2:conversations:set-sandbox-mode', conversationId, mode),
       getLocalByThread: (
         threadId: string
       ): Promise<{ conversation: Conversation; binding: ConversationBinding } | null> =>
@@ -509,6 +515,38 @@ const api = {
         ipcRenderer.invoke('core-v2:conversations:list-local-thread-rows'),
       listWindows: (sourceKind?: 'local' | 'im' | 'all'): Promise<ConversationWindowProjection[]> =>
         ipcRenderer.invoke('core-v2:conversations:list-windows', sourceKind)
+    },
+    workspaceSandbox: {
+      listGrants: (workspacePath: string): Promise<WorkspaceSandboxGrantRow[]> =>
+        ipcRenderer.invoke('workspace-sandbox:list-grants', workspacePath),
+      grant: (
+        workspacePath: string,
+        grantedPath: string,
+        access: 'read' | 'write'
+      ): Promise<WorkspaceSandboxGrantRow[]> =>
+        ipcRenderer.invoke('workspace-sandbox:grant', workspacePath, grantedPath, access),
+      revoke: (workspacePath: string, grantedPath: string): Promise<WorkspaceSandboxGrantRow[]> =>
+        ipcRenderer.invoke('workspace-sandbox:revoke', workspacePath, grantedPath),
+      readProjectManifest: (
+        workspacePath: string
+      ): Promise<{
+        requestedGrants: Array<{ path: string; resolvedPath: string; access: 'read' | 'write' }>
+      } | null> => ipcRenderer.invoke('workspace-sandbox:read-project-manifest', workspacePath),
+      respondPermissionPrompt: (
+        requestId: string,
+        approved: boolean
+      ): Promise<{ success: boolean }> =>
+        ipcRenderer.invoke('workspace-sandbox:respond-permission-prompt', requestId, approved),
+      onPermissionPrompt: (
+        callback: (prompt: WorkspaceSandboxPermissionPrompt) => void
+      ): (() => void) => {
+        const listener = (
+          _event: Electron.IpcRendererEvent,
+          prompt: WorkspaceSandboxPermissionPrompt
+        ) => callback(prompt)
+        ipcRenderer.on('workspace-sandbox:permission-prompt', listener)
+        return () => ipcRenderer.removeListener('workspace-sandbox:permission-prompt', listener)
+      }
     },
     localThreads: {
       create: (
@@ -544,9 +582,13 @@ const api = {
         ipcRenderer.invoke('core-v2:messages:search', input),
       listConversations: (input: ListConversationsInput): Promise<ListConversationsResult> =>
         ipcRenderer.invoke('core-v2:messages:list-conversations', input),
-      listConversationMessages: (input: ListConversationMessagesInput): Promise<ListConversationMessagesResult> =>
+      listConversationMessages: (
+        input: ListConversationMessagesInput
+      ): Promise<ListConversationMessagesResult> =>
         ipcRenderer.invoke('core-v2:messages:list-conversation-messages', input),
-      listAllConversationMessages: (input: ListAllConversationMessagesInput): Promise<ListAllConversationMessagesResult> =>
+      listAllConversationMessages: (
+        input: ListAllConversationMessagesInput
+      ): Promise<ListAllConversationMessagesResult> =>
         ipcRenderer.invoke('core-v2:messages:list-all-messages', input)
     },
     localMessages: {
@@ -730,7 +772,6 @@ const api = {
       }> => ipcRenderer.invoke('mcp:marketplace:list', input)
     }
   },
-
 
   runtime: {
     prepareThread: (chatThreadId: string): Promise<{ success: true; chatThreadId: string }> =>
@@ -963,29 +1004,60 @@ const api = {
     trace: (input: any): Promise<any> => ipcRenderer.invoke('knowledge:trace', input),
     getSettings: (): Promise<any> => ipcRenderer.invoke('knowledge:settings:get'),
     setSettings: (patch: any): Promise<any> => ipcRenderer.invoke('knowledge:settings:set', patch),
-    getThreadCapture: (threadId: string): Promise<any> => ipcRenderer.invoke('knowledge:thread-capture:get', threadId),
-    setThreadCapture: (threadId: string, enabled: boolean): Promise<any> => ipcRenderer.invoke('knowledge:thread-capture:set', threadId, enabled),
+    getThreadCapture: (threadId: string): Promise<any> =>
+      ipcRenderer.invoke('knowledge:thread-capture:get', threadId),
+    setThreadCapture: (threadId: string, enabled: boolean): Promise<any> =>
+      ipcRenderer.invoke('knowledge:thread-capture:set', threadId, enabled),
     stats: (): Promise<any> => ipcRenderer.invoke('knowledge:stats'),
-    listEntities: (limit?: number): Promise<any> => ipcRenderer.invoke('knowledge:entities:list', limit),
-    listActiveTasks: (limit?: number): Promise<any> => ipcRenderer.invoke('knowledge:active-tasks:list', limit),
-    finalizeActiveTask: (taskId: string): Promise<any> => ipcRenderer.invoke('knowledge:active-task:finalize', taskId),
-    discardActiveTask: (taskId: string): Promise<any> => ipcRenderer.invoke('knowledge:active-task:discard', taskId),
-    getEntity: (entityId: string): Promise<any> => ipcRenderer.invoke('knowledge:entity:get', entityId),
-    listAllClaims: (options?: { limit?: number; offset?: number; from?: string; to?: string; query?: string }): Promise<any> => ipcRenderer.invoke('knowledge:claims:list-all', options),
-    listAllPatterns: (options?: { limit?: number; offset?: number; from?: string; to?: string; query?: string }): Promise<any> => ipcRenderer.invoke('knowledge:patterns:list-all', options),
-    listAllProfiles: (options?: { limit?: number; offset?: number; from?: string; to?: string; query?: string }): Promise<any> => ipcRenderer.invoke('knowledge:profiles:list-all', options),
-    deleteClaim: (claimId: string): Promise<any> => ipcRenderer.invoke('knowledge:claim:delete', claimId),
-    deleteReflection: (reflectionId: string): Promise<any> => ipcRenderer.invoke('knowledge:reflection:delete', reflectionId),
-    deleteEntity: (entityId: string): Promise<any> => ipcRenderer.invoke('knowledge:entity:delete', entityId),
+    listEntities: (limit?: number): Promise<any> =>
+      ipcRenderer.invoke('knowledge:entities:list', limit),
+    listActiveTasks: (limit?: number): Promise<any> =>
+      ipcRenderer.invoke('knowledge:active-tasks:list', limit),
+    finalizeActiveTask: (taskId: string): Promise<any> =>
+      ipcRenderer.invoke('knowledge:active-task:finalize', taskId),
+    discardActiveTask: (taskId: string): Promise<any> =>
+      ipcRenderer.invoke('knowledge:active-task:discard', taskId),
+    getEntity: (entityId: string): Promise<any> =>
+      ipcRenderer.invoke('knowledge:entity:get', entityId),
+    listAllClaims: (options?: {
+      limit?: number
+      offset?: number
+      from?: string
+      to?: string
+      query?: string
+    }): Promise<any> => ipcRenderer.invoke('knowledge:claims:list-all', options),
+    listAllPatterns: (options?: {
+      limit?: number
+      offset?: number
+      from?: string
+      to?: string
+      query?: string
+    }): Promise<any> => ipcRenderer.invoke('knowledge:patterns:list-all', options),
+    listAllProfiles: (options?: {
+      limit?: number
+      offset?: number
+      from?: string
+      to?: string
+      query?: string
+    }): Promise<any> => ipcRenderer.invoke('knowledge:profiles:list-all', options),
+    deleteClaim: (claimId: string): Promise<any> =>
+      ipcRenderer.invoke('knowledge:claim:delete', claimId),
+    deleteReflection: (reflectionId: string): Promise<any> =>
+      ipcRenderer.invoke('knowledge:reflection:delete', reflectionId),
+    deleteEntity: (entityId: string): Promise<any> =>
+      ipcRenderer.invoke('knowledge:entity:delete', entityId),
     runDream: (options?: any): Promise<any> => ipcRenderer.invoke('knowledge:dream:run', options),
     embeddingModels: {
       list: (): Promise<any> => ipcRenderer.invoke('knowledge:embedding-models:list'),
-      download: (key: string): Promise<any> => ipcRenderer.invoke('knowledge:embedding-models:download', key),
-      openCacheDir: (key: string): Promise<any> => ipcRenderer.invoke('knowledge:embedding-models:open-cache-dir', key),
+      download: (key: string): Promise<any> =>
+        ipcRenderer.invoke('knowledge:embedding-models:download', key),
+      openCacheDir: (key: string): Promise<any> =>
+        ipcRenderer.invoke('knowledge:embedding-models:open-cache-dir', key),
       onDownloadProgress: (callback: (event: any) => void): (() => void) => {
         const listener = (_e: Electron.IpcRendererEvent, progress: any) => callback(progress)
         ipcRenderer.on('knowledge:embedding-models:download-progress', listener)
-        return () => ipcRenderer.removeListener('knowledge:embedding-models:download-progress', listener)
+        return () =>
+          ipcRenderer.removeListener('knowledge:embedding-models:download-progress', listener)
       }
     }
   }

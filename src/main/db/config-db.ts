@@ -51,7 +51,7 @@ function seedDefaultProviders(db: Database.Database): void {
 function migrateConfigDb(db: Database.Database): void {
   // Enforce FK constraints for this connection (even though cross-db FKs won't work).
   db.pragma('foreign_keys = ON')
-  const latestVersion = 10
+  const latestVersion = 11
 
   const migrate = db.transaction(() => {
     let v = getUserVersion(db)
@@ -233,6 +233,26 @@ function migrateConfigDb(db: Database.Database): void {
       v = 10
       setUserVersion(db, v)
     }
+
+    // v11: workspace-scoped external filesystem grants for sandbox mode.
+    if (v < 11) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS workspace_sandbox_grants (
+          workspace_path TEXT NOT NULL,
+          granted_path   TEXT NOT NULL,
+          access_mode    TEXT NOT NULL CHECK (access_mode IN ('read', 'write')),
+          created_at     TEXT DEFAULT (datetime('now')),
+          updated_at     TEXT DEFAULT (datetime('now')),
+          PRIMARY KEY (workspace_path, granted_path),
+          FOREIGN KEY (workspace_path) REFERENCES workspaces(path) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_workspace_sandbox_grants_workspace
+          ON workspace_sandbox_grants(workspace_path);
+      `)
+      v = 11
+      setUserVersion(db, v)
+    }
   })
 
   migrate()
@@ -326,6 +346,19 @@ function initConfigSchema(db: Database.Database): void {
       mcp_enabled    TEXT,
       FOREIGN KEY (workspace_path) REFERENCES workspaces(path) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS workspace_sandbox_grants (
+      workspace_path TEXT NOT NULL,
+      granted_path   TEXT NOT NULL,
+      access_mode    TEXT NOT NULL CHECK (access_mode IN ('read', 'write')),
+      created_at     TEXT DEFAULT (datetime('now')),
+      updated_at     TEXT DEFAULT (datetime('now')),
+      PRIMARY KEY (workspace_path, granted_path),
+      FOREIGN KEY (workspace_path) REFERENCES workspaces(path) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_workspace_sandbox_grants_workspace
+      ON workspace_sandbox_grants(workspace_path);
   `)
 
   ensureTransportPluginConfigSchema(db)
@@ -337,8 +370,7 @@ function initConfigSchema(db: Database.Database): void {
 export function getSetting(key: string): string | null {
   const db = getConfigDb()
   const row = db.prepare('SELECT value FROM global_settings WHERE key = ?').get(key) as
-    | { value: string }
-    | undefined
+    { value: string } | undefined
   return row?.value ?? null
 }
 
@@ -784,6 +816,7 @@ export function deleteWorkspace(workspacePath: string): void {
   db.transaction((targetPath: string) => {
     // Keep deletion compatible with pre-v6 databases that may still lack cascade here.
     db.prepare('DELETE FROM workspace_mcp_servers WHERE workspace_path = ?').run(targetPath)
+    db.prepare('DELETE FROM workspace_sandbox_grants WHERE workspace_path = ?').run(targetPath)
     db.prepare('DELETE FROM workspace_settings WHERE workspace_path = ?').run(targetPath)
     db.prepare('DELETE FROM workspaces WHERE path = ?').run(targetPath)
   })(workspacePath)
@@ -800,6 +833,14 @@ export interface WorkspaceMcpServerRow {
   workspace_path: string
   server_id: string
   enabled: number
+  updated_at: string
+}
+
+export interface WorkspaceSandboxGrantRow {
+  workspace_path: string
+  granted_path: string
+  access_mode: 'read' | 'write'
+  created_at: string
   updated_at: string
 }
 
@@ -824,6 +865,48 @@ export function setWorkspaceSettings(
          mcp_enabled = COALESCE(excluded.mcp_enabled, workspace_settings.mcp_enabled)`
     )
     .run(workspacePath, settings.model ?? null, settings.mcp_enabled ?? null)
+}
+
+export function listWorkspaceSandboxGrants(workspacePath: string): WorkspaceSandboxGrantRow[] {
+  return getConfigDb()
+    .prepare(
+      `SELECT workspace_path, granted_path, access_mode, created_at, updated_at
+       FROM workspace_sandbox_grants
+       WHERE workspace_path = ?
+       ORDER BY granted_path ASC`
+    )
+    .all(workspacePath) as WorkspaceSandboxGrantRow[]
+}
+
+export function upsertWorkspaceSandboxGrant(
+  workspacePath: string,
+  grantedPath: string,
+  accessMode: 'read' | 'write'
+): void {
+  const db = getConfigDb()
+  const tx = db.transaction(() => {
+    db.prepare(
+      `INSERT OR IGNORE INTO workspaces (path, name, last_opened_at)
+       VALUES (?, ?, datetime('now'))`
+    ).run(workspacePath, path.basename(workspacePath))
+    db.prepare(
+      `INSERT INTO workspace_sandbox_grants (workspace_path, granted_path, access_mode, updated_at)
+       VALUES (?, ?, ?, datetime('now'))
+       ON CONFLICT(workspace_path, granted_path) DO UPDATE SET
+         access_mode = excluded.access_mode,
+         updated_at = excluded.updated_at`
+    ).run(workspacePath, grantedPath, accessMode)
+  })
+  tx()
+}
+
+export function deleteWorkspaceSandboxGrant(workspacePath: string, grantedPath: string): void {
+  getConfigDb()
+    .prepare(
+      `DELETE FROM workspace_sandbox_grants
+       WHERE workspace_path = ? AND granted_path = ?`
+    )
+    .run(workspacePath, grantedPath)
 }
 
 export function listWorkspaceMcpServerBindings(workspacePath: string): WorkspaceMcpServerRow[] {

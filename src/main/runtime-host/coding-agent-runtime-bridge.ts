@@ -334,7 +334,9 @@ const providerSettingsApi = (settings: ReturnType<typeof normalizeProviderSettin
 
 const builtInProviderApi = (runtimeProvider: string): Api | null => {
   try {
-    return asApi((getModels(runtimeProvider as KnownProvider as any) as Array<{ api?: unknown }>)[0]?.api)
+    return asApi(
+      (getModels(runtimeProvider as KnownProvider as any) as Array<{ api?: unknown }>)[0]?.api
+    )
   } catch {
     return null
   }
@@ -1137,24 +1139,37 @@ export class CodingAgentRuntimeBridge {
           })
         : []
     const localInteractionTools = [...interactionTools, ...planTools]
-    const builtinToolDefinitions = this.baseToolLayer.getBaseBuiltinToolDefinitions(workspacePath)
+    const builtinToolDefinitions = this.baseToolLayer.getBaseBuiltinToolDefinitions(
+      workspacePath,
+      policy.sandboxPolicyId
+    )
     const { frameworkTools, mcpTools } = await this.baseToolLayer.getFrameworkCustomToolGroups(
       workspacePath,
       {
         extraMcpServers: agentPluginResources.mcpServers,
-        getSkills: () => loader.getSkills().skills
+        getSkills: () => loader.getSkills().skills,
+        sandboxPolicyId: policy.sandboxPolicyId
       }
     )
-    const manifestPluginTools = agentPluginResources.tools
-    const pluginCatalogTools = uniqueToolDefinitions([
-      ...manifestPluginTools,
-      ...getAgentPluginExtensionTools(loader)
-    ])
-    const surfaceTools = await surface.getCustomTools(runtimeSurfaceContext)
+    // MCP servers, agent plugins, and desktop automation run outside the filesystem
+    // boundary controlled below. Keep them out of sandbox sessions until each has an
+    // isolated host and its own permission contract. Network-only tools remain available.
+    const isWorkspaceSandbox = policy.sandboxPolicyId === 'sandbox'
+    const safeFrameworkTools = isWorkspaceSandbox
+      ? frameworkTools.filter((tool) => tool.name !== 'computerUse')
+      : frameworkTools
+    const manifestPluginTools = isWorkspaceSandbox ? [] : agentPluginResources.tools
+    const pluginCatalogTools = isWorkspaceSandbox
+      ? []
+      : uniqueToolDefinitions([...manifestPluginTools, ...getAgentPluginExtensionTools(loader)])
+    const surfaceTools = isWorkspaceSandbox
+      ? []
+      : await surface.getCustomTools(runtimeSurfaceContext)
+    const sandboxMcpTools = isWorkspaceSandbox ? [] : mcpTools
     let registry = buildRuntimeToolRegistry([
       { source: 'builtin', tools: builtinToolDefinitions, scopes: ['local', 'im'] },
-      { source: 'framework', tools: frameworkTools, scopes: ['local', 'im'] },
-      { source: 'mcp', tools: mcpTools, scopes: ['local', 'im'] },
+      { source: 'framework', tools: safeFrameworkTools, scopes: ['local', 'im'] },
+      { source: 'mcp', tools: sandboxMcpTools, scopes: ['local', 'im'] },
       { source: 'plugin', tools: pluginCatalogTools, scopes: ['local', 'im'] },
       { source: 'interaction', tools: localInteractionTools, scopes: ['local'] },
       { source: 'surface', tools: surfaceTools, scopes: [surface.sourceKind] }
@@ -1177,10 +1192,10 @@ export class CodingAgentRuntimeBridge {
       { source: 'builtin', tools: builtinToolDefinitions, scopes: ['local', 'im'] },
       {
         source: 'framework',
-        tools: [discoverBuiltinToolsTool, ...frameworkTools],
+        tools: [discoverBuiltinToolsTool, ...safeFrameworkTools],
         scopes: ['local', 'im']
       },
-      { source: 'mcp', tools: mcpTools, scopes: ['local', 'im'] },
+      { source: 'mcp', tools: sandboxMcpTools, scopes: ['local', 'im'] },
       { source: 'plugin', tools: pluginCatalogTools, scopes: ['local', 'im'] },
       { source: 'interaction', tools: localInteractionTools, scopes: ['local'] },
       { source: 'surface', tools: surfaceTools, scopes: [surface.sourceKind] }
@@ -1194,9 +1209,12 @@ export class CodingAgentRuntimeBridge {
     runtimeToolState.enabledToolsets = resolution.enabledToolsets
     const sessionToolAllowlist = buildAgentSessionToolAllowlist(resolution)
     const customTools = uniqueToolDefinitions([
+      // createAgentSession installs its own builtin tools. Register these definitions too so
+      // the session registry replaces those defaults with the guarded implementations.
+      ...builtinToolDefinitions,
       discoverBuiltinToolsTool,
-      ...frameworkTools,
-      ...mcpTools,
+      ...safeFrameworkTools,
+      ...sandboxMcpTools,
       ...manifestPluginTools,
       ...localInteractionTools,
       ...surfaceTools
@@ -1237,8 +1255,7 @@ export class CodingAgentRuntimeBridge {
         await this.contextHostService.onConsumedUserMessage(message)
       },
       onEventsFlushed: async (rows) => this.persistRuntimeEvents(conversation.id, rows),
-      resolveCanonicalRunId: (agentRunId) =>
-        this.resolveCoreRunId(conversation.id, agentRunId),
+      resolveCanonicalRunId: (agentRunId) => this.resolveCoreRunId(conversation.id, agentRunId),
       onAppEvent: (appEvent) => {
         const mappedAppEvent = this.mapAppEventRunId(conversation.id, appEvent)
         if (!mappedAppEvent) return
@@ -1511,7 +1528,7 @@ export class CodingAgentRuntimeBridge {
       agentRunId: coreRunId,
       agentTurnId: payload.agentTurnId ?? null,
       consumedAt: payload.consumedAt,
-      runtimeSequence: payload.runtimeSequence,
+      runtimeSequence: payload.runtimeSequence
     })
   }
 
@@ -2039,9 +2056,7 @@ export class CodingAgentRuntimeBridge {
     if (requestedRun.triggerKind === 'automation') {
       const runtimeStatus = mapRuntimeRunStatus(mappedProjection.status)
       const runtimeErrorText =
-        text ||
-        extractFirstTurnError(mappedProjection.turns) ||
-        'Automation run failed'
+        text || extractFirstTurnError(mappedProjection.turns) || 'Automation run failed'
       scheduledTaskService.markAgentRunFinished({
         agentRunId: requestedRun.id,
         status:
@@ -2385,10 +2400,7 @@ export class CodingAgentRuntimeBridge {
     return run
   }
 
-  private resolveCoreRunId(
-    conversationId: string,
-    runtimeRunId: string
-  ): string {
+  private resolveCoreRunId(conversationId: string, runtimeRunId: string): string {
     const existing = this.runtimeRunIdToCoreRunId.get(runtimeRunId)
     if (existing) return existing
     const queuedRun = this.takeQueuedRunForRuntimeEvent(conversationId)
