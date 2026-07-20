@@ -1240,12 +1240,20 @@ export class CodingAgentRuntimeBridge {
     })
     this.installXiaomiReasoningContentPayloadCompat(session as any)
     ;(session as any).setActiveToolsByName?.(sessionToolAllowlist)
-    await this.applyContextSeed(session as any, interactionThreadId, modelDef)
-    await this.applyCoreConversationSeed(
+    const contextSeedApplied = await this.applyContextSeed(
       session as any,
-      conversation.id,
-      input.currentPromptExternalMessageId ?? null
+      interactionThreadId,
+      modelDef
     )
+    // Context-engine seed already carries tool/result history. Core chat seed
+    // must not overwrite it, or usage stays low and auto-compact never fires.
+    if (!contextSeedApplied) {
+      await this.applyCoreConversationSeed(
+        session as any,
+        conversation.id,
+        input.currentPromptExternalMessageId ?? null
+      )
+    }
     const runtimeAdapter = new RuntimeAdapter(session, {
       threadId: interactionThreadId,
       ensureConsumedUserMessage: async (payload) =>
@@ -1407,18 +1415,63 @@ export class CodingAgentRuntimeBridge {
       contextUsage: session.getContextUsage?.()
     })
 
-    const outcome = await this.contextHostService.compactPreflight(
-      runtime.interactionThreadId,
-      `${runtime.providerId}::${runtime.modelId}`,
-      estimate
-    )
-    if (!outcome.attempted || !outcome.result?.changed) return runtime
+    let outcome: Awaited<ReturnType<NonNullable<typeof this.contextHostService>['compactPreflight']>>
+    try {
+      outcome = await this.contextHostService.compactPreflight(
+        runtime.interactionThreadId,
+        `${runtime.providerId}::${runtime.modelId}`,
+        estimate,
+        {
+          onBeforeCompact: (effectiveEstimate) => {
+            this.emitDebugRow(runtime.interactionThreadId, 'context.compaction.started', {
+              reason: 'preflight',
+              estimateMode: effectiveEstimate.estimateMode,
+              estimatedPromptTokens: effectiveEstimate.estimatedPromptTokens,
+              thresholdTokens: effectiveEstimate.thresholdTokens,
+              contextWindow: effectiveEstimate.contextWindow
+            })
+          }
+        }
+      )
+    } catch (error) {
+      this.emitDebugRow(runtime.interactionThreadId, 'context.compaction.failed', {
+        reason: 'preflight',
+        error: error instanceof Error ? error.message : String(error)
+      })
+      throw error
+    }
 
+    if (!outcome.attempted) return runtime
+
+    if (!outcome.result?.changed) {
+      this.emitDebugRow(runtime.interactionThreadId, 'context.compaction.skipped', {
+        reason: 'preflight',
+        revision: outcome.result?.revision ?? null,
+        estimateMode: outcome.estimate.estimateMode,
+        estimatedPromptTokens: outcome.estimate.estimatedPromptTokens,
+        thresholdTokens: outcome.estimate.thresholdTokens,
+        contextWindow: outcome.estimate.contextWindow
+      })
+      return runtime
+    }
+
+    this.emitDebugRow(runtime.interactionThreadId, 'context.compaction.completed', {
+      reason: 'preflight',
+      revision: outcome.result.revision,
+      summaryEntryId: outcome.result.summaryEntryId ?? null,
+      estimateMode: outcome.estimate.estimateMode,
+      estimatedPromptTokens: outcome.estimate.estimatedPromptTokens,
+      thresholdTokens: outcome.estimate.thresholdTokens,
+      contextWindow: outcome.estimate.contextWindow
+    })
+    // Keep legacy event name for debug/history consumers that still listen for preflight.
     this.emitDebugRow(runtime.interactionThreadId, 'context.compaction.preflight', {
-      estimateMode: estimate.estimateMode,
-      estimatedPromptTokens: estimate.estimatedPromptTokens,
-      thresholdTokens: estimate.thresholdTokens,
-      contextWindow: estimate.contextWindow
+      estimateMode: outcome.estimate.estimateMode,
+      estimatedPromptTokens: outcome.estimate.estimatedPromptTokens,
+      thresholdTokens: outcome.estimate.thresholdTokens,
+      contextWindow: outcome.estimate.contextWindow,
+      revision: outcome.result.revision,
+      summaryEntryId: outcome.result.summaryEntryId ?? null
     })
 
     await this.stopConversation(run.conversationId)
@@ -1536,17 +1589,22 @@ export class CodingAgentRuntimeBridge {
     session: RuntimeSession,
     interactionThreadId: string,
     modelDef: RuntimeModelDefinition
-  ): Promise<void> {
-    if (!this.contextHostService) return
+  ): Promise<boolean> {
+    if (!this.contextHostService) return false
     try {
       const seedSnapshot = await this.contextHostService.buildSeedMessages(interactionThreadId, {
         api: modelDef.api,
         provider: (modelDef as any).provider,
         id: modelDef.id
       })
+      if (!Array.isArray(seedSnapshot.messages) || seedSnapshot.messages.length === 0) {
+        return false
+      }
       this.contextThreadFactory.applySeedMessages(session as any, seedSnapshot.messages)
+      return true
     } catch (error) {
       console.error('Context seed materialization failed', error)
+      return false
     }
   }
 

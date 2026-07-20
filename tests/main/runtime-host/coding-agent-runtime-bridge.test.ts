@@ -1024,3 +1024,86 @@ test('runtime bridge excludes persisted synthetic system followup prompts from m
   assert.deepEqual(session.agent.state.messages, [{ role: 'user', content: 'hello' }])
   assert.deepEqual(appended, [{ role: 'user', content: 'hello' }])
 })
+
+test('runtime bridge prefers context-engine seed over core conversation seed', async () => {
+  const core = createCore()
+  const bridge = new CodingAgentRuntimeBridge({
+    core,
+    contextHostService: {
+      buildSeedMessages: async () => ({
+        messages: [
+          { role: 'user', content: 'from-context-engine', timestamp: Date.now() },
+          {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'tool history blob' }],
+            api: 'openai-responses',
+            provider: 'provider',
+            model: 'model-1',
+            stopReason: 'stop',
+            timestamp: Date.now()
+          }
+        ],
+        revision: 1
+      })
+    } as any
+  })
+
+  const appended: unknown[] = []
+  const session = {
+    agent: { state: { messages: [] as unknown[] } },
+    sessionManager: {
+      appendMessage: (message: unknown) => {
+        appended.push(message)
+        return String(appended.length)
+      }
+    }
+  }
+
+  const applied = await (bridge as any).applyContextSeed(
+    session,
+    'thread-context-seed',
+    {
+      api: 'openai-responses',
+      provider: 'provider',
+      id: 'model-1'
+    }
+  )
+
+  assert.equal(applied, true)
+  assert.equal(session.agent.state.messages.length, 2)
+  assert.equal((session.agent.state.messages[0] as any).content, 'from-context-engine')
+  assert.equal(appended.length, 2)
+})
+
+test('runtime bridge falls back to core seed when context seed is empty', async () => {
+  const core = createCore()
+  const bridge = new CodingAgentRuntimeBridge({
+    core,
+    contextHostService: {
+      buildSeedMessages: async () => ({
+        messages: [],
+        revision: 0
+      })
+    } as any
+  })
+
+  const session = {
+    agent: { state: { messages: [] as unknown[] } },
+    sessionManager: {
+      appendMessage: () => '1'
+    }
+  }
+
+  const applied = await (bridge as any).applyContextSeed(
+    session,
+    'thread-empty-context-seed',
+    {
+      api: 'openai-responses',
+      provider: 'provider',
+      id: 'model-1'
+    }
+  )
+
+  assert.equal(applied, false)
+  assert.equal(session.agent.state.messages.length, 0)
+})

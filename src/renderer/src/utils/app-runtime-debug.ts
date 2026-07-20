@@ -5,6 +5,8 @@ import type { ConversationEventRow } from '../../../preload/db-types'
 import type { AgentRun } from '../components/chat/types'
 
 const RUNTIME_DEBUG_EVENT_HISTORY_DISABLED = true
+/** Timeline 数据接收总开关：true 时不再收集 live/debug 事件。 */
+const RUNTIME_DEBUG_TIMELINE_DISABLED = true
 
 type RuntimeDebugRunOption = {
   id: string
@@ -198,6 +200,7 @@ export const useRuntimeDebugState = <T extends { id: string }>({
     threadId: string,
     event: ConversationEventRow & { __chatThreadId?: string }
   ): void => {
+    if (RUNTIME_DEBUG_TIMELINE_DISABLED) return
     const list = runtimeLiveDebugEventsByThreadId.get(threadId) ?? []
     list.push({
       id: event.id,
@@ -254,6 +257,7 @@ export const useRuntimeDebugState = <T extends { id: string }>({
     payload: unknown,
     options?: { agentRunId?: string | null }
   ): void => {
+    if (RUNTIME_DEBUG_TIMELINE_DISABLED) return
     const event = createRendererDebugEvent(threadId, eventType, payload, options)
     appendRuntimeLiveDebugEvent(threadId, event)
     if (RUNTIME_DEBUG_EVENT_HISTORY_DISABLED) return
@@ -349,6 +353,7 @@ export const useRuntimeDebugState = <T extends { id: string }>({
   }
 
   const runtimeDebugEvents = computed(() => {
+    if (RUNTIME_DEBUG_TIMELINE_DISABLED) return []
     const threadId = currentRuntimeDebugThreadId.value
     if (!threadId) return []
     const live = runtimeLiveDebugEventsByThreadId.get(threadId) ?? []

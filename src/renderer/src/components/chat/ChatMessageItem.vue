@@ -8,8 +8,7 @@ import {
   Trash2,
   Check,
   Brain,
-  Clock,
-  Layers
+  Clock
 } from 'lucide-vue-next'
 import Tooltip from '../common/Tooltip.vue'
 import MarkdownContent from './MarkdownContent.vue'
@@ -420,10 +419,12 @@ watch(isMoreOpen, (open, _prev, onCleanup) => {
       ]"
     >
       <div
-        class="rounded-xl border"
         :class="[
           isContextCompaction
-            ? 'w-fit max-w-[88%] border-(--theme-border-base) bg-(--theme-bg-content)/55 px-3 py-1.5 shadow-sm'
+            ? 'w-full max-w-none border-transparent bg-transparent px-0 py-0 shadow-none'
+            : 'rounded-xl border',
+          isContextCompaction
+            ? ''
             : isAutomation
               ? 'w-fit max-w-[85%] border-(--theme-border-base) bg-(--theme-bg-content)/40 px-4 py-3 shadow-sm ml-1'
               : role === 'assistant'
@@ -444,10 +445,9 @@ watch(isMoreOpen, (open, _prev, onCleanup) => {
       >
         <div
           v-if="isContextCompaction"
-          class="inline-flex max-w-full items-center gap-2 text-[11px] font-medium leading-relaxed text-(--theme-text-dim)"
+          class="w-full select-none py-1 text-center text-[11px] tracking-wide text-(--theme-text-dim)"
         >
-          <Layers :size="13" class="shrink-0 text-(--theme-text-dim)" />
-          <span class="whitespace-pre-wrap wrap-break-word">{{ textContent }}</span>
+          {{ textContent }}
         </div>
         <div
           v-else-if="isPending && !(role === 'assistant' && run)"

@@ -100,20 +100,17 @@ export const resolveProviderMaxTokens = (
   return DEFAULT_PROVIDER_MAX_TOKENS
 }
 
-const hasUsageMetrics = (usage: unknown): boolean => {
-  if (!usage || typeof usage !== 'object' || Array.isArray(usage)) return false
-  const record = usage as Record<string, unknown>
+const isMissingUsageMetadataError = (error: unknown): boolean => {
+  if (!(error instanceof TypeError)) return false
+  const message = String(error.message ?? '')
+  // pi-ai isContextOverflow / calculateContextTokens read usage fields without optional chaining.
   return (
-    asPositiveInt(record.totalTokens) != null ||
-    asPositiveInt(record.input) != null ||
-    asPositiveInt(record.output) != null ||
-    asPositiveInt(record.cacheRead) != null ||
-    asPositiveInt(record.cacheWrite) != null
+    /totalTokens|input|output|cacheRead|cacheWrite/.test(message) ||
+    /Cannot read properties of undefined \(reading '(?:totalTokens|input|output|cacheRead|cacheWrite)'\)/.test(
+      message
+    )
   )
 }
-
-const isMissingUsageMetadataError = (error: unknown): boolean =>
-  error instanceof TypeError && /totalTokens|input|output|cacheRead|cacheWrite/.test(error.message)
 
 const IMAGE_TOKEN_ESTIMATE = 512
 
@@ -141,6 +138,19 @@ const estimateMessageTokens = (message: unknown): number => {
   return total
 }
 
+const resolveSessionMessages = (session: Record<string, unknown>): unknown[] => {
+  if (Array.isArray(session.messages)) return session.messages
+  const agent = session.agent
+  if (agent && typeof agent === 'object' && !Array.isArray(agent)) {
+    const state = (agent as Record<string, unknown>).state
+    if (state && typeof state === 'object' && !Array.isArray(state)) {
+      const messages = (state as Record<string, unknown>).messages
+      if (Array.isArray(messages)) return messages
+    }
+  }
+  return []
+}
+
 const estimateHeuristicTokens = (session: Record<string, unknown>): number => {
   let total = 0
   const systemPrompt = session.systemPrompt as string | undefined
@@ -148,11 +158,8 @@ const estimateHeuristicTokens = (session: Record<string, unknown>): number => {
     const normalized = systemPrompt.replace(/\r\n/g, '\n').trim()
     total += normalized ? Math.max(1, Math.ceil(normalized.length / 4)) : 0
   }
-  const messages = session.messages
-  if (Array.isArray(messages)) {
-    for (const message of messages) {
-      total += estimateMessageTokens(message)
-    }
+  for (const message of resolveSessionMessages(session)) {
+    total += estimateMessageTokens(message)
   }
   return total
 }
@@ -198,16 +205,8 @@ export const applyAgentSessionCompat = <T extends object>(
       const currentContextWindow = asPositiveInt(compat.model?.contextWindow)
       if (currentContextWindow == null) return
 
-      const record =
-        assistantMessage && typeof assistantMessage === 'object' && !Array.isArray(assistantMessage)
-          ? (assistantMessage as Record<string, unknown>)
-          : null
-      const stopReason = typeof record?.stopReason === 'string' ? record.stopReason : ''
-
-      if (stopReason !== 'error' && !hasUsageMetrics(record?.usage)) {
-        return
-      }
-
+      // Always delegate. Original handles zero-usage via estimateContextTokens;
+      // only swallow TypeErrors from missing usage fields (isContextOverflow).
       try {
         await originalCheckCompaction(assistantMessage, skipAbortedCheck)
       } catch (error) {

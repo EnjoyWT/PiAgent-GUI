@@ -470,14 +470,17 @@ export class LocalThreadHostService {
     })
 
     if (matchedCandidate) {
+      // Preserve the original local send timestamp. Overwriting with runtime
+      // consumedAt (message.started) is later than run/turn start, which can make
+      // live recovered assistants sort before the user message mid-stream.
       return this.updateUserMessageRuntimeLink(matchedCandidate.id, {
         agentRunId: normalizedRunId,
         agentTurnId: input.agentTurnId ?? null,
-        runtimeSequence: input.runtimeSequence ?? null,
-        createdAt: consumedAt
+        runtimeSequence: input.runtimeSequence ?? null
       })
     }
 
+    // No local row yet (e.g. swallowed follow-up): create with consume time.
     return this.addMessage(normalizedThreadId, 'user', normalizedText, normalizedRunId, null, {
       agentTurnId: input.agentTurnId ?? null,
       runtimeSequence: input.runtimeSequence ?? null,

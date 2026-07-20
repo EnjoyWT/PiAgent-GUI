@@ -98,14 +98,23 @@ export class ContextHostService {
     })
   }
 
-  async compactPreflight(threadId: string, modelKey: string, estimate: ContextPressureEstimate) {
+  async compactPreflight(
+    threadId: string,
+    modelKey: string,
+    estimate: ContextPressureEstimate,
+    options?: {
+      /** Fired only after the threshold check passes, before summary generation. */
+      onBeforeCompact?: (effectiveEstimate: ContextPressureEstimate) => void
+    }
+  ) {
     this.ensureThreadState(threadId)
     const config = this.configService.getConfig()
     if (config.mode !== 'auto') {
       return {
         attempted: false,
         compacted: false,
-        result: null
+        result: null,
+        estimate
       }
     }
 
@@ -139,9 +148,13 @@ export class ContextHostService {
       return {
         attempted: false,
         compacted: false,
-        result: null
+        result: null,
+        estimate: effectiveEstimate
       }
     }
+
+    // Notify UI before the (potentially slow) summary model call.
+    options?.onBeforeCompact?.(effectiveEstimate)
 
     const result = await engine.compact({
       threadId,
@@ -151,7 +164,8 @@ export class ContextHostService {
     return {
       attempted: true,
       compacted: result.changed,
-      result
+      result,
+      estimate: effectiveEstimate
     }
   }
 

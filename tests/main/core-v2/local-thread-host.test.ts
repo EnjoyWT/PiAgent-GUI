@@ -1,9 +1,34 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { dirname, resolve } from 'node:path'
+import { registerHooks } from 'node:module'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { AgentRunProjection } from '../../../src/shared/agent-runtime.ts'
-import { InMemoryCoreService } from '../../../src/main/core-v2/in-memory-core-service.ts'
-import { LocalThreadHostService } from '../../../src/main/core-v2/local-thread-host.ts'
 import type { ConversationEventRow, MessageRow, ThreadRow } from '../../../src/preload/db-types.ts'
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
+
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (specifier === 'electron') {
+      return {
+        shortCircuit: true,
+        url: pathToFileURL(resolve(repoRoot, 'tests/main/runtime-host/electron-stub.mjs')).href
+      }
+    }
+    if (specifier.startsWith('@shared/')) {
+      const sharedPath = resolve(repoRoot, 'src/shared', `${specifier.slice('@shared/'.length)}.ts`)
+      return {
+        shortCircuit: true,
+        url: pathToFileURL(sharedPath).href
+      }
+    }
+    return nextResolve(specifier, context)
+  }
+})
+
+const { InMemoryCoreService } = await import('../../../src/main/core-v2/in-memory-core-service.ts')
+const { LocalThreadHostService } = await import('../../../src/main/core-v2/local-thread-host.ts')
 
 const createCore = () => {
   const core = new InMemoryCoreService()
@@ -201,7 +226,9 @@ test('local thread host persists consumed user turn identity at runtime fact sou
     title: 'newchat'
   })
   const first = host.addMessage(thread.id, 'user', 'hello', null, null, {
+    createdAt: '2026-04-20T09:42:50.000Z'
   })
+  const originalCreatedAt = first.created_at
   const consumed = host.ensureConsumedUserMessage({
     threadId: thread.id,
     text: 'hello',
@@ -218,8 +245,43 @@ test('local thread host persists consumed user turn identity at runtime fact sou
   assert.equal(consumed?.agent_run_id, 'run-turn')
   assert.equal(consumed?.agent_turn_id, 'turn-consumed')
   assert.equal(consumed?.runtime_sequence, 3)
+  // Must keep local send time; rewriting to consumedAt causes mid-stream A/B reorder.
+  assert.equal(consumed?.created_at, originalCreatedAt)
+  assert.equal(Date.parse(consumed!.created_at), Date.parse('2026-04-20T09:42:50.000Z'))
+  assert.notEqual(Date.parse(consumed!.created_at), Date.parse('2026-04-20T09:43:00.363Z'))
   assert.equal(coreMessages.length, 1)
+  assert.equal(Date.parse(coreMessages[0]!.createdAt), Date.parse('2026-04-20T09:42:50.000Z'))
   assert.match(coreMessages[0]?.payloadJson ?? '', /"agentTurnId":"turn-consumed"/)
+})
+
+test('local thread host backfills missing user with consumedAt when no local row exists', () => {
+  const core = createCore()
+  const projection = createProjectionStore()
+  const host = new LocalThreadHostService({
+    core,
+    projectionStore: projection.api,
+    resolveAgentProfileId: () => 'default'
+  })
+
+  const thread = host.createThread({
+    workspacePath: '/tmp/repo-b-2-backfill',
+    model: 'openai::gpt-5.4',
+    title: 'newchat'
+  })
+  const consumed = host.ensureConsumedUserMessage({
+    threadId: thread.id,
+    text: 'follow-up only in runtime',
+    agentRunId: 'run-backfill',
+    agentTurnId: 'turn-backfill',
+    runtimeSequence: 5,
+    consumedAt: '2026-04-20T09:44:00.000Z'
+  })
+
+  assert.ok(consumed)
+  assert.equal(consumed?.agent_run_id, 'run-backfill')
+  assert.equal(consumed?.agent_turn_id, 'turn-backfill')
+  assert.equal(consumed?.runtime_sequence, 5)
+  assert.equal(Date.parse(consumed!.created_at), Date.parse('2026-04-20T09:44:00.000Z'))
 })
 
 test('local thread host reuses the same assistant row for repeated finalized turn persistence', () => {

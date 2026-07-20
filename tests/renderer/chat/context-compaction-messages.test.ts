@@ -35,7 +35,7 @@ test('adds a non-context chat marker while context compaction is running', () =>
   assert.equal(messages.length, 1)
   assert.equal(messages[0].messageKind, 'context_compaction')
   assert.equal(messages[0].includeInAgentContext, false)
-  assert.match(messages[0].content, /正在压缩上下文/)
+  assert.equal(messages[0].content, '-----正在压缩上下文-----')
 })
 
 test('updates the running marker when compaction completes', () => {
@@ -50,8 +50,7 @@ test('updates the running marker when compaction completes', () => {
   assert.equal(messages.length, 1)
   assert.equal(messages[0].messageKind, 'context_compaction')
   assert.equal(messages[0].includeInAgentContext, false)
-  assert.match(messages[0].content, /上下文已压缩/)
-  assert.match(messages[0].content, /后续对话将使用当前激活上下文/)
+  assert.equal(messages[0].content, '-----上下文已压缩-----')
 })
 
 test('adds a completed marker for automatic preflight compaction', () => {
@@ -70,5 +69,33 @@ test('adds a completed marker for automatic preflight compaction', () => {
   assert.equal(messages.length, 2)
   assert.equal(messages[1].messageKind, 'context_compaction')
   assert.equal(messages[1].includeInAgentContext, false)
-  assert.match(messages[1].content, /上下文已压缩/)
+  assert.equal(messages[1].content, '-----上下文已压缩-----')
+})
+
+test('shows running then completed for preflight lifecycle without stacking markers', () => {
+  const messages: ChatMessage[] = [{ role: 'user', content: '继续' }]
+
+  applyContextCompactionEventToMessages(messages, createEvent('context.compaction.started'))
+  assert.equal(messages.length, 2)
+  assert.equal(messages[1].content, '-----正在压缩上下文-----')
+
+  applyContextCompactionEventToMessages(
+    messages,
+    createEvent('context.compaction.completed', { revision: 3 })
+  )
+  assert.equal(messages.length, 2)
+  assert.equal(messages[1].content, '-----上下文已压缩-----')
+
+  // Legacy preflight event after completed should replace, not append.
+  applyContextCompactionEventToMessages(
+    messages,
+    createEvent('context.compaction.preflight', {
+      estimateMode: 'usage_backed',
+      estimatedPromptTokens: 70000,
+      thresholdTokens: 60000,
+      contextWindow: 100000
+    })
+  )
+  assert.equal(messages.length, 2)
+  assert.equal(messages[1].content, '-----上下文已压缩-----')
 })

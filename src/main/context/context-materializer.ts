@@ -21,22 +21,26 @@ const buildSummaryWrapper = (summaryBody: string): string => {
   return normalizedBody ? `${SUMMARY_WRAPPER_PREFIX}\n\n${normalizedBody}` : SUMMARY_WRAPPER_PREFIX
 }
 
-const estimateTextTokens = (value: string): number => {
-  const normalized = value.replace(/\r\n/g, '\n').trim()
-  if (!normalized) return 0
-  return Math.max(1, Math.ceil(normalized.length / 4))
-}
-
-const estimateSeedUsage = (contentText: string): Usage => {
-  const estimatedInput = estimateTextTokens(contentText)
-  return {
-    input: estimatedInput,
-    output: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
-    totalTokens: estimatedInput,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }
-  }
+/**
+ * Zero usage for seeded assistants.
+ *
+ * Why zero (not omitted, not content-estimated):
+ * 1. pi-coding-agent/pi-ai always read `message.usage.totalTokens` /
+ *    `message.usage.input` without optional chaining. Missing usage throws
+ *    `Cannot read properties of undefined (reading 'totalTokens')`.
+ * 2. estimateContextTokens trusts the last assistant with usage > 0 and then
+ *    only adds trailing messages. Content-estimated per-message usage would
+ *    undercount multi-entry tool history (only the last seed counts).
+ * 3. Zero usage is ignored by getAssistantUsage (requires > 0), so estimation
+ *    falls back to full-message heuristics — the correct behavior for seeds.
+ */
+const ZERO_SEED_USAGE: Usage = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 0,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }
 }
 
 const mapEntryToMessage = (entry: ContextEntry, model: ContextModelSeed): Message | null => {
@@ -66,7 +70,7 @@ const mapEntryToMessage = (entry: ContextEntry, model: ContextModelSeed): Messag
         api: model.api,
         provider: model.provider as never,
         model: model.id,
-        usage: estimateSeedUsage(contentText),
+        usage: ZERO_SEED_USAGE,
         stopReason: 'stop',
         timestamp
       } as Message

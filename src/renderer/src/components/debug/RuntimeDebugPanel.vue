@@ -42,7 +42,7 @@ const emit = defineEmits<{
   (e: 'select-run', runId: string | null): void
 }>()
 
-const activeTab = ref<'context' | 'events'>('events')
+const activeTab = ref<'context' | 'events'>('context')
 const scrollContainer = ref<HTMLElement | null>(null)
 
 const categoryMeta = (eventType: string) => {
@@ -268,8 +268,7 @@ const eventStats = computed(() => {
 const emptyStateText = computed(() => {
   if (props.loading) return '正在载入 runtime 事件...'
   if (!props.threadId) return '先选择一个线程'
-  if (props.selectedRunId) return '当前 run 还没有事件'
-  return '当前线程还没有 runtime 事件'
+  return 'Timeline 已关闭'
 })
 
 const requestScrollToBottom = async () => {
@@ -463,7 +462,7 @@ watch(
               >
                 <div class="text-sm font-medium text-slate-700">{{ emptyStateText }}</div>
                 <div class="mt-2 text-xs leading-5 text-slate-500">
-                  只展示当前窗口实时收到的 live 内存事件，不读取数据库历史数据。
+                  已停止接收 Timeline 数据，不再收集 live/debug 事件。
                 </div>
               </div>
             </div>
