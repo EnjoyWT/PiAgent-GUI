@@ -1,9 +1,8 @@
 import { existsSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import {
-  AuthStorage,
   DefaultResourceLoader,
-  ModelRegistry,
+  ModelRuntime,
   SessionManager,
   SettingsManager,
   type ToolDefinition,
@@ -115,8 +114,8 @@ import { resolveRuntimeThreadSourceKind } from './runtime-thread-source-kind.ts'
 import type { WorkerRuntimeModelConfig } from '../subagents/subagent-types.ts'
 
 type RuntimeSession = Awaited<ReturnType<typeof createAgentSession>>['session']
-type RuntimeModelDefinition = NonNullable<ReturnType<ModelRegistry['find']>>
-type RuntimeProviderConfigInput = Parameters<ModelRegistry['registerProvider']>[1]
+type RuntimeModelDefinition = NonNullable<ReturnType<ModelRuntime['getModel']>>
+type RuntimeProviderConfigInput = Parameters<ModelRuntime['registerProvider']>[1]
 type RuntimeProviderModelInput = NonNullable<RuntimeProviderConfigInput['models']>[number]
 
 type RuntimeToolState = {
@@ -463,11 +462,8 @@ export class CodingAgentRuntimeBridge {
   private readonly interactionController: RuntimeUserInteractionController
   private readonly appConfigDir = getPreferredAppConfigDir()
   private readonly agentDir = path.join(this.appConfigDir, 'agent')
-  private readonly authStorage = AuthStorage.create(path.join(this.agentDir, 'auth.json'))
-  private readonly modelRegistry = ModelRegistry.create(
-    this.authStorage,
-    path.join(this.agentDir, 'models.json')
-  )
+  private modelRuntime: ModelRuntime | null = null
+  private modelRuntimeInit: Promise<ModelRuntime> | null = null
   private readonly settingsManager = SettingsManager.inMemory({
     retry: {
       enabled: true,
@@ -508,6 +504,22 @@ export class CodingAgentRuntimeBridge {
 
   setDispatchPendingDeliveries(callback?: () => Promise<void>): void {
     this.dispatchPendingDeliveries = callback
+  }
+
+  private async ensureModelRuntime(): Promise<ModelRuntime> {
+    if (this.modelRuntime) return this.modelRuntime
+    if (!this.modelRuntimeInit) {
+      ensureDirectory(this.agentDir)
+      this.modelRuntimeInit = ModelRuntime.create({
+        authPath: path.join(this.agentDir, 'auth.json'),
+        modelsPath: path.join(this.agentDir, 'models.json'),
+        allowModelNetwork: false
+      }).then((runtime) => {
+        this.modelRuntime = runtime
+        return runtime
+      })
+    }
+    return this.modelRuntimeInit
   }
 
   async start(run: AgentRun): Promise<void> {
@@ -1220,13 +1232,13 @@ export class CodingAgentRuntimeBridge {
       ...surfaceTools
     ])
 
+    const modelRuntime = await this.ensureModelRuntime()
     const result = await createAgentSession({
       cwd: workspacePath,
       agentDir: this.agentDir,
       model: modelDef,
       thinkingLevel: policy.model.reasoningLevel as any,
-      authStorage: this.authStorage,
-      modelRegistry: this.modelRegistry,
+      modelRuntime,
       settingsManager: this.settingsManager,
       resourceLoader: loader,
       sessionManager: SessionManager.inMemory(workspacePath),
@@ -1285,6 +1297,15 @@ export class CodingAgentRuntimeBridge {
               this.resolveCoreRunId(conversation.id, projection.agentRunId)
             )
           )
+          // Fire-and-forget: if context grew past the compaction threshold
+          // during this run, compact now instead of waiting for the next
+          // user message.
+          this.contextHostService
+            .compactAfterRun(
+              interactionThreadId,
+              `${policy.model.providerId}::${policy.model.modelId}`
+            )
+            .catch(() => {})
         }
         const current = this.sessionsByConversationId.get(conversation.id)
         if (current?.reloadPending) {
@@ -1835,15 +1856,12 @@ export class CodingAgentRuntimeBridge {
   }
 
   private async resolveModel(policy: ExecutionPolicy): Promise<RuntimeModelDefinition> {
+    const modelRuntime = await this.ensureModelRuntime()
     const providerId = policy.model.providerId
     const modelId = policy.model.modelId
     const apiKey = getProviderApiKeyByRuntimeProvider(providerId)
     if (apiKey) {
-      const setRuntimeKey = this.authStorage.setRuntimeApiKey.bind(this.authStorage) as (
-        provider: string,
-        apiKey: string
-      ) => void
-      setRuntimeKey(providerId, apiKey)
+      await modelRuntime.setRuntimeApiKey(providerId, apiKey)
     }
 
     const providerInfo = getProviderByRuntimeProvider(providerId)
@@ -1949,7 +1967,7 @@ export class CodingAgentRuntimeBridge {
         const finalProviderBaseUrl =
           api === 'anthropic-messages' ? providerBaseUrl.replace(/\/v1$/i, '') : providerBaseUrl
 
-        this.modelRegistry.registerProvider(providerId, {
+        modelRuntime.registerProvider(providerId, {
           baseUrl: finalProviderBaseUrl,
           apiKey: apiKey ?? undefined,
           api,
@@ -1964,7 +1982,7 @@ export class CodingAgentRuntimeBridge {
           models: modelDefs
         })
       } else if (shouldRegisterDynamicProvider(providerInfo.id, providerInfo.runtimeProvider)) {
-        this.modelRegistry.registerProvider(providerId, {
+        modelRuntime.registerProvider(providerId, {
           baseUrl: providerBaseUrl,
           apiKey: apiKey ?? undefined,
           api,
@@ -1975,7 +1993,7 @@ export class CodingAgentRuntimeBridge {
       }
     }
 
-    const modelDef = this.modelRegistry.find(providerId, modelId)
+    const modelDef = modelRuntime.getModel(providerId, modelId)
     if (!modelDef) throw new Error(`Model ${providerId}::${modelId} not found`)
     return modelDef
   }
@@ -1984,16 +2002,23 @@ export class CodingAgentRuntimeBridge {
     policy: ExecutionPolicy,
     modelDef: RuntimeModelDefinition
   ): Promise<WorkerRuntimeModelConfig> {
-    const auth = await this.modelRegistry.getApiKeyAndHeaders(modelDef)
+    const modelRuntime = await this.ensureModelRuntime()
+    const auth = await modelRuntime.getAuth(modelDef)
     return {
       providerId: policy.model.providerId,
       modelId: policy.model.modelId,
       reasoningLevel: policy.model.reasoningLevel ?? null,
       providerConfig: {
         baseUrl: modelDef.baseUrl,
-        apiKey: auth.ok ? auth.apiKey : undefined,
+        apiKey: auth?.auth.apiKey,
         api: modelDef.api,
-        headers: auth.ok ? auth.headers : undefined,
+        headers: auth?.auth.headers
+          ? Object.fromEntries(
+              Object.entries(auth.auth.headers).filter(
+                (entry): entry is [string, string] => entry[1] !== null
+              )
+            )
+          : undefined,
         models: [
           {
             id: modelDef.id,

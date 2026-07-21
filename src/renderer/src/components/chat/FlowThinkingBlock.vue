@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, onBeforeUnmount } from 'vue'
+import { computed, ref, watch, onBeforeUnmount, nextTick } from 'vue'
 import { Brain, ChevronDown, ChevronRight } from 'lucide-vue-next'
 import MarkdownContent from './MarkdownContent.vue'
 import { useThinkingScroll } from './useThinkingScroll'
@@ -57,15 +57,27 @@ const getThinkingStatusText = (): string =>
     ? '思考中'
     : `思考了 ${formatThinkingDuration(getThinkingDurationMs())}`
 
+const rootRef = ref<HTMLElement | null>(null)
+
 // 折叠/展开逻辑，初始化：如果已经结束了，默认折叠，未结束则展开
 const isExpanded = ref(props.block.endedAt == null)
 
 // 当思考块突然结束时，我们需要将它自动折叠（保持历史会话整洁），但激活时保持打开。
+// 折叠后需要将聊天容器滚动到底部，防止因内容高度减小导致 UI 向上滑动到用户输入位置。
 watch(
   () => props.block.endedAt,
   (endedAt, prevEndedAt) => {
     if (prevEndedAt == null && endedAt != null) {
       isExpanded.value = false
+      // 等待折叠过渡动画完成（220ms）后将聊天容器滚到底部
+      nextTick(() => {
+        setTimeout(() => {
+          const chatEl = rootRef.value?.closest('.chat-flow-container')
+          if (chatEl) {
+            chatEl.scrollTop = chatEl.scrollHeight
+          }
+        }, 280)
+      })
     }
   }
 )
@@ -82,7 +94,7 @@ setupAutoScroll(() => props.block.thinking)
 </script>
 
 <template>
-  <div class="w-fit max-w-full">
+  <div ref="rootRef" class="w-fit max-w-full">
     <button
       type="button"
       class="hover-expand-x inline-flex items-center gap-2 rounded-lg py-1 pr-2 text-(--theme-text-dim) transition-colors hover:bg-(--theme-bg-hover-btn) flex-nowrap whitespace-nowrap"

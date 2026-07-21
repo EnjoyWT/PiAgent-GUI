@@ -20,14 +20,14 @@ const contextCompactionEventTypes = new Set([
 const buildMessageText = (event: ContextCompactionEventRow): string | null => {
   switch (event.event_type) {
     case 'context.compaction.started':
-      return '-----正在压缩上下文-----'
+      return '正在压缩上下文'
     case 'context.compaction.preflight':
     case 'context.compaction.completed':
-      return '-----上下文已压缩-----'
+      return '上下文已压缩'
     case 'context.compaction.skipped':
-      return '-----上下文压缩已跳过-----'
+      return '上下文压缩已跳过'
     case 'context.compaction.failed':
-      return '-----上下文压缩失败-----'
+      return '上下文压缩失败'
     default:
       return null
   }

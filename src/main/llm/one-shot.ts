@@ -240,9 +240,14 @@ export const runOneShotText = async (
   const candidateModelKeys = normalizeModelKeyList(input.modelKeys)
   if (candidateModelKeys.length === 0) return null
 
+  const failures: Array<{ modelKey: string; reason: string }> = []
+
   for (const modelKey of candidateModelKeys) {
     const resolved = resolveConfiguredModel(modelKey)
-    if (!resolved) continue
+    if (!resolved) {
+      failures.push({ modelKey, reason: 'model resolution failed (provider not found, API key missing, or model not configured)' })
+      continue
+    }
 
     const context: Context = {
       systemPrompt: input.systemPrompt,
@@ -266,16 +271,34 @@ export const runOneShotText = async (
       )
 
       const text = extractAssistantText(response.content)
-      if (!text) continue
+      if (!text) {
+        const contentTypes = Array.isArray(response.content)
+          ? response.content.map((block: { type: string }) => block.type).join(', ')
+          : typeof response.content
+        failures.push({
+          modelKey: resolved.modelKey,
+          reason: `model returned empty text (content block types: [${contentTypes || 'none'}])`
+        })
+        continue
+      }
 
       return {
         modelKey: resolved.modelKey,
         text
       }
-    } catch {
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err)
+      failures.push({ modelKey: resolved.modelKey, reason })
       continue
     }
   }
+
+  const failureSummary = failures
+    .map((f) => `  - ${f.modelKey}: ${f.reason}`)
+    .join('\n')
+  console.error(
+    `[one-shot] All ${candidateModelKeys.length} model(s) failed for one-shot completion:\n${failureSummary}`
+  )
 
   return null
 }

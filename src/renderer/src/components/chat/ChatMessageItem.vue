@@ -126,6 +126,14 @@ const showAssistantThinkingPlaceholderBeforeFlow = computed(
 const showAssistantThinkingPlaceholderAfterFlow = computed(
   () => showAssistantThinkingPlaceholder.value && (assistantFlow.value?.blocks.length ?? 0) > 0
 )
+// 防止 run-flow 模式下没有任何可见内容时渲染空白气泡
+const assistantRunFlowIsEmpty = computed(
+  () =>
+    useAssistantRunFlow.value &&
+    !showAssistantThinkingPlaceholder.value &&
+    (assistantFlow.value?.blocks.length ?? 0) === 0 &&
+    imageBlocks.value.length === 0
+)
 const hasInlineRenderedWidget = computed(() =>
   Boolean(
     assistantFlow.value?.blocks.some(
@@ -389,9 +397,10 @@ watch(isMoreOpen, (open, _prev, onCleanup) => {
 <template>
   <div
     v-if="
-      !useAssistantRunFlow ||
-      isAssistantRunFlowOwner ||
-      (props.run?.turns.length ?? 0) <= 1
+      (!useAssistantRunFlow ||
+        isAssistantRunFlowOwner ||
+        (props.run?.turns.length ?? 0) <= 1) &&
+      !assistantRunFlowIsEmpty
     "
     ref="messageRootRef"
     data-testid="message-item"
@@ -410,7 +419,7 @@ watch(isMoreOpen, (open, _prev, onCleanup) => {
       class="group w-full min-w-0 flex flex-col"
       :class="[
         isContextCompaction
-          ? 'items-center my-1.5'
+          ? 'items-center my-1.5 w-[65%]'
           : isAutomation
             ? 'items-start my-1.5'
             : role === 'user'
@@ -445,9 +454,11 @@ watch(isMoreOpen, (open, _prev, onCleanup) => {
       >
         <div
           v-if="isContextCompaction"
-          class="w-full select-none py-1 text-center text-[11px] tracking-wide text-(--theme-text-dim)"
+          class="context-compaction-marker w-full select-none py-1.5"
         >
-          {{ textContent }}
+          <span class="context-compaction-line" aria-hidden="true" />
+          <span class="context-compaction-label">{{ textContent }}</span>
+          <span class="context-compaction-line" aria-hidden="true" />
         </div>
         <div
           v-else-if="isPending && !(role === 'assistant' && run)"
@@ -701,6 +712,28 @@ watch(isMoreOpen, (open, _prev, onCleanup) => {
 </template>
 
 <style scoped>
+.context-compaction-marker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.context-compaction-line {
+  flex: 1 1 0;
+  min-width: 24px;
+  height: 2px;
+  background: var(--theme-border-base);
+}
+
+.context-compaction-label {
+  flex: 0 0 auto;
+  font-size: 14px;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  color: var(--theme-text-dim);
+  white-space: nowrap;
+}
+
 .thinking-tail-text {
   position: relative;
   display: inline-block;

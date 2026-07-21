@@ -169,6 +169,44 @@ export class ContextHostService {
     }
   }
 
+  async compactAfterRun(threadId: string, modelKey: string): Promise<void> {
+    const config = this.configService.getConfig()
+    if (config.mode !== 'auto') return
+
+    const head = this.store.getThreadHead(threadId)
+    if (!head) return
+
+    const persistedTokens = head.contextUsageTokens
+    const persistedWindow = head.contextUsageWindow
+    if (persistedTokens == null || persistedWindow == null) return
+
+    // Build a conservative estimate from the persisted usage data recorded
+    // by recordContextUsage immediately before onRunFinalized.
+    const estimate: ContextPressureEstimate = {
+      contextWindow: persistedWindow,
+      estimatedPromptTokens: Math.max(persistedTokens, 0),
+      thresholdTokens: Math.max(
+        1,
+        Math.min(
+          Math.floor(persistedWindow * config.trigger.thresholdPercent),
+          Math.max(1, persistedWindow - config.trigger.reserveOutputTokens)
+        )
+      ),
+      estimateMode: 'usage_backed',
+      currentContextTokens: persistedTokens,
+      warningLevel: 'normal'
+    }
+
+    const engine = this.resolveEngine()
+    if (!engine.shouldCompact({ estimate })) return
+
+    try {
+      await engine.compact({ threadId, modelKey, reason: 'after_run' })
+    } catch {
+      // Post-run compaction is opportunistic; never crash run finalization.
+    }
+  }
+
   async onConsumedUserMessage(message: MessageRow): Promise<void> {
     this.ensureThreadState(message.thread_id)
     await this.captureService.captureConsumedUserMessage({ message })

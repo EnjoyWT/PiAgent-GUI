@@ -1,6 +1,6 @@
+import { InMemoryCredentialStore } from '@earendil-works/pi-ai'
 import {
-  AuthStorage,
-  ModelRegistry,
+  ModelRuntime,
   SessionManager,
   createAgentSession,
   createExtensionRuntime,
@@ -36,12 +36,18 @@ export class WorkerSessionFactoryImpl implements WorkerSessionFactory {
   }
 
   async create(input: StartWorkerAttemptInput): Promise<WorkerSessionHandle> {
-    const authStorage = AuthStorage.inMemory()
+    const modelRuntime = await ModelRuntime.create({
+      credentials: new InMemoryCredentialStore(),
+      modelsPath: null,
+      allowModelNetwork: false
+    })
     if (input.runtimeModel.providerConfig.apiKey) {
-      authStorage.setRuntimeApiKey(input.runtimeModel.providerId, input.runtimeModel.providerConfig.apiKey)
+      await modelRuntime.setRuntimeApiKey(
+        input.runtimeModel.providerId,
+        input.runtimeModel.providerConfig.apiKey
+      )
     }
-    const modelRegistry = ModelRegistry.inMemory(authStorage)
-    modelRegistry.registerProvider(input.runtimeModel.providerId, {
+    modelRuntime.registerProvider(input.runtimeModel.providerId, {
       baseUrl: input.runtimeModel.providerConfig.baseUrl,
       apiKey: input.runtimeModel.providerConfig.apiKey,
       api: input.runtimeModel.providerConfig.api as any,
@@ -53,7 +59,7 @@ export class WorkerSessionFactoryImpl implements WorkerSessionFactory {
         compat: model.compat as any
       })) as any
     })
-    const model = modelRegistry.find(input.runtimeModel.providerId, input.runtimeModel.modelId)
+    const model = modelRuntime.getModel(input.runtimeModel.providerId, input.runtimeModel.modelId)
     if (!model) {
       throw new Error(
         `Worker runtime model not found: ${input.runtimeModel.providerId}::${input.runtimeModel.modelId}`
@@ -64,8 +70,7 @@ export class WorkerSessionFactoryImpl implements WorkerSessionFactory {
       cwd: input.cwd,
       model,
       thinkingLevel: input.runtimeModel.reasoningLevel as any,
-      authStorage,
-      modelRegistry,
+      modelRuntime,
       tools: input.toolPolicy.activeToolNames,
       resourceLoader: new StaticWorkerResourceLoader(input.promptPackage.systemPrompt),
       sessionManager: SessionManager.inMemory(input.cwd)

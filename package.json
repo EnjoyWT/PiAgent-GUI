@@ -32,10 +32,10 @@
   },
   "dependencies": {
     "@anthropic-ai/sandbox-runtime": "0.0.65",
-    "@earendil-works/pi-agent-core": "0.80.7",
-    "@earendil-works/pi-ai": "0.80.7",
-    "@earendil-works/pi-coding-agent": "0.80.7",
-    "@earendil-works/pi-tui": "0.80.7",
+    "@earendil-works/pi-agent-core": "0.80.10",
+    "@earendil-works/pi-ai": "0.80.10",
+    "@earendil-works/pi-coding-agent": "0.80.10",
+    "@earendil-works/pi-tui": "0.80.10",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@fastify/merge-json-schemas": "0.2.1",
@@ -138,9 +138,9 @@
   "pnpm": {
     "overrides": {
       "vite": "^8.0.16",
-      "@earendil-works/pi-agent-core": "0.80.7",
-      "@earendil-works/pi-ai": "0.80.7",
-      "@earendil-works/pi-coding-agent": "0.80.7"
+      "@earendil-works/pi-agent-core": "0.80.10",
+      "@earendil-works/pi-ai": "0.80.10",
+      "@earendil-works/pi-coding-agent": "0.80.10"
     },
     "onlyBuiltDependencies": [
       "@earendil-works/pi-coding-agent",

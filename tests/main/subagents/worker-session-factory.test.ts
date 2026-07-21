@@ -84,11 +84,11 @@ test('worker session factory creates an isolated session from worker prompt pack
   const factory = new WorkerSessionFactoryImpl({
     createAgentSession: async (options) => {
       createCalls.push(options)
-      const auth = await options.modelRegistry!.getApiKeyAndHeaders(options.model!)
+      const auth = await options.modelRuntime!.getAuth(options.model!)
       assert.equal(options.model?.provider, 'openai')
       assert.equal(options.model?.id, 'gpt-5.4')
       assert.equal(options.model?.baseUrl, 'https://runtime.example.test/v1')
-      assert.equal(auth.ok ? auth.apiKey : null, 'runtime-secret-key')
+      assert.equal(auth?.auth.apiKey ?? null, 'runtime-secret-key')
       return { session } as any
     }
   })

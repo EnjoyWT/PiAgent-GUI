@@ -705,6 +705,25 @@ export const buildMessageRenderFlow = (params: {
     }
   }
 
+  // 当 run 已终止（非 running）且没有任何 block 时，生成一个回退 block，
+  // 防止 UI 中出现空白的 assistant 消息气泡。
+  if (blocks.length === 0 && run.status !== 'running') {
+    const terminationKind = run.termination?.kind
+    if (terminationKind === 'error') {
+      blocks.push({
+        kind: 'turn_error',
+        id: `run-error:${run.id}`,
+        errorMessage: run.termination?.message || '请求失败'
+      })
+    } else if (terminationKind === 'aborted') {
+      blocks.push({
+        kind: 'turn_error',
+        id: `run-aborted:${run.id}`,
+        errorMessage: '请求已中止'
+      })
+    }
+  }
+
   const normalizedBlocks = blocks.filter((block, index, list) => {
     if (block.kind !== 'thinking' || block.thinking.trim()) return true
     return !list.slice(index + 1).some(blockHasVisibleContent)

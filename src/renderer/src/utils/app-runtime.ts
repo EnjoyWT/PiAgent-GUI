@@ -186,6 +186,7 @@ export const syncChatRunFromProjection = (target: AgentRun, run: AgentRunProject
 }
 
 export const turnHasVisibleAssistantOutput = (turn: AgentTurn): boolean =>
+  Boolean(turn.terminationReason) ||
   turn.toolCalls.length > 0 ||
   turn.timelineItems.some(
     (item) =>

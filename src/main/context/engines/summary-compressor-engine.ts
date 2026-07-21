@@ -326,7 +326,11 @@ export class SummaryCompressorEngine implements ContextEngine {
     })
 
     if (!result?.text?.trim()) {
-      throw new Error('Summary model did not return summary text')
+      const attempted = modelKeys.length > 0 ? modelKeys.join(', ') : '(none)'
+      throw new Error(
+        `Summary model did not return summary text. Attempted models: [${attempted}]. ` +
+          'Check that the summary model is properly configured with a valid API key and is reachable.'
+      )
     }
 
     return result
