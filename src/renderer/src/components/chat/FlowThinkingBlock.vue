@@ -62,27 +62,32 @@ const rootRef = ref<HTMLElement | null>(null)
 // 折叠/展开逻辑，初始化：如果已经结束了，默认折叠，未结束则展开
 const isExpanded = ref(props.block.endedAt == null)
 
-// 当思考块突然结束时，我们需要将它自动折叠（保持历史会话整洁），但激活时保持打开。
-// 折叠后需要将聊天容器滚动到底部，防止因内容高度减小导致 UI 向上滑动到用户输入位置。
+// 区分自动折叠（思考结束）和手动折叠（用户点击），只在自动折叠时滚动
+const isAutoCollapse = ref(false)
+
+// 当思考块结束时自动折叠
 watch(
   () => props.block.endedAt,
   (endedAt, prevEndedAt) => {
     if (prevEndedAt == null && endedAt != null) {
+      isAutoCollapse.value = true
       isExpanded.value = false
-      // 等待折叠过渡动画完成（220ms）后将聊天容器滚到底部
-      nextTick(() => {
-        setTimeout(() => {
-          const chatEl = rootRef.value?.closest('.chat-flow-container')
-          if (chatEl) {
-            chatEl.scrollTop = chatEl.scrollHeight
-          }
-        }, 280)
-      })
     }
   }
 )
 
+// 折叠过渡动画完成后，将聊天容器滚动到底部
+const onThinkingCollapsed = (): void => {
+  if (!isAutoCollapse.value) return
+  isAutoCollapse.value = false
+  const chatEl = rootRef.value?.closest('.chat-flow-container')
+  if (chatEl) {
+    chatEl.scrollTop = chatEl.scrollHeight
+  }
+}
+
 const toggleThinking = (): void => {
+  isAutoCollapse.value = false
   isExpanded.value = !isExpanded.value
 }
 
@@ -114,7 +119,7 @@ setupAutoScroll(() => props.block.thinking)
       />
       <ChevronRight v-else :size="14" class="shrink-0 text-(--theme-text-dim)" />
     </button>
-    <Transition name="flow-expand">
+    <Transition name="flow-expand" @after-leave="onThinkingCollapsed">
       <div v-if="isExpanded" class="flow-expand-shell">
         <div class="flow-expand-inner">
           <div

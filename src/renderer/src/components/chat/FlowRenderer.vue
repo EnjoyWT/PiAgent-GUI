@@ -81,6 +81,13 @@ watch(
   { immediate: true }
 )
 
+// 当中间过程自动折叠时（最终回答出现），通知父组件滚动到底部
+watch(intermediateProcessCollapsed, (collapsed) => {
+  if (collapsed && !intermediateProcessUserToggled.value) {
+    emit('widget-layout-change')
+  }
+})
+
 const onWidgetAction = (payload: { action: string; text: string }): void => {
   emit('widget-action', payload)
 }

@@ -176,7 +176,7 @@ const messageRenderKey = (message: ChatMessage, index: number): string =>
   getMessageRenderKey(message, index)
 
 const handleMessageWidgetLayoutChange = (): void => {
-  void scrollToBottom({ behavior: props.isStreaming ? 'auto' : 'smooth' })
+  void scrollToBottom({ force: true, behavior: props.isStreaming ? 'auto' : 'smooth' })
 }
 
 const scrollContainer = ref<HTMLElement | null>(null)
