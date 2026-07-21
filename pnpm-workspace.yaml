@@ -1,7 +1,13 @@
+# Single-package workspace (required when this file exists).
+# Without `packages`, setup-node cache: pnpm fails with:
+#   ERROR  packages field missing or empty
+packages:
+  - '.'
+
 onlyBuiltDependencies:
-  - "@earendil-works/pi-agent-core"
-  - "@earendil-works/pi-ai"
-  - "@earendil-works/pi-coding-agent"
+  - '@earendil-works/pi-agent-core'
+  - '@earendil-works/pi-ai'
+  - '@earendil-works/pi-coding-agent'
   - better-sqlite3
   - electron
   - esbuild

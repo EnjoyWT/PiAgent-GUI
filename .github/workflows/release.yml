@@ -90,6 +90,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
+          # Pin Node 22 (Actions default is shifting to 24; keep builds stable).
           node-version: 22
           cache: pnpm
 
