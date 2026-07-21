@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, onBeforeUnmount, nextTick } from 'vue'
+import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import { Brain, ChevronDown, ChevronRight } from 'lucide-vue-next'
 import MarkdownContent from './MarkdownContent.vue'
 import { useThinkingScroll } from './useThinkingScroll'
