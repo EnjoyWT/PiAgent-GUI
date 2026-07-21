@@ -1,4 +1,4 @@
-appId: com.electron.app
+appId: com.piagent.app
 productName: PiAgent
 directories:
   buildResources: build
@@ -31,6 +31,9 @@ nsis:
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
 mac:
+  target:
+    - dmg
+    - zip
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
@@ -53,5 +56,6 @@ appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
 publish:
-  provider: generic
-  url: https://example.com/auto-updates
+  provider: github
+  owner: EnjoyWT
+  repo: PiAgent-GUI

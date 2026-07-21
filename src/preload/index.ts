@@ -47,6 +47,10 @@ import type {
   UpdateScheduledTaskInput
 } from '../shared/scheduled-tasks.ts'
 import type {
+  AppUpdateCheckResult,
+  AppUpdateStatus
+} from '../shared/app-update.ts'
+import type {
   InstalledTransportPlugin,
   SaveTransportPluginAccountInput,
   StartTransportPluginAccountSetupInput,
@@ -152,10 +156,25 @@ const api = {
     ipcRenderer.on('main-window:open-thread', listener)
     return () => ipcRenderer.removeListener('main-window:open-thread', listener)
   },
-  openExternal: (url: string) => shell.openExternal(url),
+  openExternal: (url: string): Promise<void> => shell.openExternal(url),
   openPath: (path: string) => shell.openPath(path),
   showItemInFolder: (path: string) => {
     shell.showItemInFolder(path)
+  },
+  appUpdate: {
+    getStatus: (): Promise<AppUpdateStatus> => ipcRenderer.invoke('app-update:get-status'),
+    check: (): Promise<AppUpdateCheckResult> => ipcRenderer.invoke('app-update:check'),
+    download: (): Promise<AppUpdateStatus> => ipcRenderer.invoke('app-update:download'),
+    quitAndInstall: (): Promise<AppUpdateStatus> =>
+      ipcRenderer.invoke('app-update:quit-and-install'),
+    openReleasePage: (): Promise<{ success: true; url: string }> =>
+      ipcRenderer.invoke('app-update:open-release-page'),
+    onStatus: (callback: (status: AppUpdateStatus) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, status: AppUpdateStatus): void =>
+        callback(status)
+      ipcRenderer.on('app-update:status', listener)
+      return () => ipcRenderer.removeListener('app-update:status', listener)
+    }
   },
   showFileContextMenu: (input: {
     path: string

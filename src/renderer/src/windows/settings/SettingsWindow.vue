@@ -144,6 +144,7 @@ import {
   Palette,
   Clock3,
   MousePointerClick,
+  Info,
   X
 } from 'lucide-vue-next'
 import ProvidersSettings from './components/ProvidersSettings.vue'
@@ -159,6 +160,7 @@ import AgentPluginsSettings from './components/AgentPluginsSettings.vue'
 import ImSettings from './components/ImSettings.vue'
 import WebFetchSettings from './components/WebFetchSettings.vue'
 import ComputerUseSettings from './components/ComputerUseSettings.vue'
+import AboutSettings from './components/AboutSettings.vue'
 
 defineProps<{
   isOpen: boolean
@@ -184,7 +186,8 @@ const categories = [
   // { id: 'voice', label: '语音', icon: Mic },
   // { id: 'tts', label: 'Text-to-Speech', icon: Volume2 },
   { id: 'search', label: '网络搜索', icon: Globe },
-  { id: 'theme', label: '配色方案', icon: Palette }
+  { id: 'theme', label: '配色方案', icon: Palette },
+  { id: 'about', label: '关于', icon: Info }
 ]
 
 import ThemeSettings from './components/ThemeSettings.vue'
@@ -223,7 +226,8 @@ const categoryComponents: Record<string, any> = {
   plugins: AgentPluginsSettings,
   computerUse: ComputerUseSettings,
   search: WebFetchSettings,
-  theme: ThemeSettings
+  theme: ThemeSettings,
+  about: AboutSettings
 }
 
 const currentComponent = computed(

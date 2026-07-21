@@ -43,6 +43,7 @@ import type {
   ScheduledTaskValidationResult,
   UpdateScheduledTaskInput
 } from '../shared/scheduled-tasks.ts'
+import type { AppUpdateCheckResult, AppUpdateStatus } from '../shared/app-update.ts'
 import type {
   InstalledTransportPlugin,
   SaveTransportPluginAccountInput,
@@ -168,9 +169,17 @@ declare global {
       onSettingsCategory: (callback: (category: string) => void) => void
       onRuntimeInspectorThread: (callback: (threadId: string) => void) => () => void
       onOpenThread: (callback: (threadId: string) => void) => () => void
-      openExternal: (url: string) => void
+      openExternal: (url: string) => Promise<void>
       openPath: (path: string) => Promise<string>
       showItemInFolder: (path: string) => void
+      appUpdate: {
+        getStatus: () => Promise<AppUpdateStatus>
+        check: () => Promise<AppUpdateCheckResult>
+        download: () => Promise<AppUpdateStatus>
+        quitAndInstall: () => Promise<AppUpdateStatus>
+        openReleasePage: () => Promise<{ success: true; url: string }>
+        onStatus: (callback: (status: AppUpdateStatus) => void) => () => void
+      }
       showFileContextMenu: (input: {
         path: string
         threadId?: string | null

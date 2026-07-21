@@ -1,0 +1,154 @@
+# Tag-triggered release for electron-updater (in-app update).
+# Push a tag like v0.0.2 → build Mac only → GitHub Releases.
+# Auto-update needs: *.zip + latest-mac.yml (+ *.blockmap).
+#
+# Scope: macOS only (arm64 + x64). No Windows/Linux. No notarization.
+#
+# Public repo rules:
+# - Never commit signing certs / Apple passwords.
+# - Put secrets only in: Repo Settings → Secrets and variables → Actions
+# - Signing uses CSC_LINK + CSC_KEY_PASSWORD when present; otherwise unsigned.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v0.0.3). Empty = package.json version as vX.Y.Z'
+        required: false
+        type: string
+
+# Public repo: only grant what publish needs. Do not use pull_request triggers
+# for release (fork PRs must never publish or touch signing secrets).
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-mac:
+    name: Build & publish macOS
+    runs-on: macos-latest
+    timeout-minutes: 90
+    # Only run on this repository (not forks)
+    if: github.repository == 'EnjoyWT/PiAgent-GUI'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.tag }}" ]]; then
+            RAW_TAG="${{ inputs.tag }}"
+          elif [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            RAW_TAG="${GITHUB_REF_NAME}"
+          else
+            PKG_VERSION="$(node -p "require('./package.json').version")"
+            RAW_TAG="v${PKG_VERSION}"
+          fi
+
+          VERSION="${RAW_TAG#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]]; then
+            echo "Invalid version from tag: ${RAW_TAG}"
+            exit 1
+          fi
+
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Resolved release version: v${VERSION}"
+
+      - name: Sync package.json version
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e "
+            const fs = require('fs')
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
+            pkg.version = process.env.RELEASE_VERSION
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n')
+            console.log('package.json version ->', pkg.version)
+          "
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Detect signing mode
+        id: signing
+        shell: bash
+        env:
+          # Secrets are never printed; only presence is checked.
+          HAS_CSC_LINK: ${{ secrets.CSC_LINK != '' }}
+        run: |
+          set -euo pipefail
+          if [[ "${HAS_CSC_LINK}" == "true" ]]; then
+            echo "mode=signed" >> "$GITHUB_OUTPUT"
+            echo "Signing: ENABLED (CSC_LINK present). Notarization: OFF."
+          else
+            echo "mode=unsigned" >> "$GITHUB_OUTPUT"
+            echo "Signing: DISABLED. Add CSC_LINK + CSC_KEY_PASSWORD in Actions secrets to sign."
+          fi
+
+      - name: Build Mac app + publish to GitHub Releases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SIGNING_MODE: ${{ steps.signing.outputs.mode }}
+          # Signing only. Do not pass Apple notarization secrets.
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${SIGNING_MODE}" == "signed" ]]; then
+            # Developer ID Application cert (.p12) via CSC_LINK. No notarize.
+            unset CSC_IDENTITY_AUTO_DISCOVERY || true
+            echo "Mac signed build (notarize=false in electron-builder.yml)."
+          else
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+            unset CSC_LINK CSC_KEY_PASSWORD || true
+          fi
+
+          pnpm run typecheck
+          pnpm run build:computer-use-helper
+          pnpm exec electron-vite build
+
+          # Mac only. zip required by electron-updater; dmg for manual install.
+          pnpm exec electron-builder --mac --arm64 --x64 --publish always
+
+      - name: Upload build artifacts (fallback)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-release-${{ steps.version.outputs.version }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.blockmap
+            dist/latest-mac.yml
+            dist/builder-*.yml
+          if-no-files-found: warn
+          retention-days: 14
