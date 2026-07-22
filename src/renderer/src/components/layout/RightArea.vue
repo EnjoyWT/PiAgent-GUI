@@ -21,7 +21,9 @@ import type { SubagentPanelState } from '@shared/subagent-panel'
 import {
   createBottomScrollAnimation,
   getBottomScrollFrame,
+  resolveBottomScrollBehavior,
   shouldFollowLayoutChangeToBottom,
+  type BottomScrollBehavior,
   type BottomScrollAnimation
 } from './bottom-scroll'
 
@@ -178,7 +180,7 @@ const messageRenderKey = (message: ChatMessage, index: number): string =>
 
 const handleMessageWidgetLayoutChange = (): void => {
   if (!shouldFollowLayoutChangeToBottom({ isPinnedToBottom: isPinnedToBottom.value })) return
-  void scrollToBottom({ behavior: props.isStreaming ? 'auto' : 'smooth' })
+  void scrollToBottom({ behavior: 'auto' })
 }
 
 const scrollContainer = ref<HTMLElement | null>(null)
@@ -226,7 +228,6 @@ const handleScroll = (): void => {
 let scrollRafId: number | null = null
 let bottomScrollAnimationRafId: number | null = null
 let bottomScrollAnimation: BottomScrollAnimation | null = null
-type ScrollMode = 'auto' | 'smooth'
 
 const cancelBottomScrollAnimation = (): void => {
   if (bottomScrollAnimationRafId !== null) {
@@ -280,7 +281,7 @@ const handleManualScrollIntent = (): void => {
   cancelBottomScrollAnimation()
 }
 
-const scrollToBottom = async (options?: { force?: boolean; behavior?: ScrollMode }) => {
+const scrollToBottom = async (options?: { force?: boolean; behavior?: BottomScrollBehavior }) => {
   if (scrollRafId !== null) return
 
   scrollRafId = requestAnimationFrame(async (timestamp) => {
@@ -296,10 +297,12 @@ const scrollToBottom = async (options?: { force?: boolean; behavior?: ScrollMode
     }
     const targetTop = Math.max(0, el.scrollHeight - el.clientHeight)
     const delta = targetTop - el.scrollTop
-    const smooth =
-      options?.behavior === 'smooth' ||
-      (options?.behavior !== 'auto' && !options?.force && delta < 2400)
-    if (smooth) {
+    const behavior = resolveBottomScrollBehavior({
+      requestedBehavior: options?.behavior,
+      force: options?.force,
+      deltaPx: delta
+    })
+    if (behavior === 'smooth') {
       startBottomScrollAnimation(el, targetTop, timestamp)
     } else {
       cancelBottomScrollAnimation()

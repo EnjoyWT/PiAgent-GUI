@@ -203,12 +203,7 @@ import RuntimeDebugPanel from './components/debug/RuntimeDebugPanel.vue'
 import GlobalSearchPalette from './components/search/GlobalSearchPalette.vue'
 import GlobalDialogHost from './components/common/GlobalDialogHost.vue'
 import { globalDialog } from './utils/dialog'
-import type {
-  AgentRun,
-  AgentTurn,
-  ChatWidget,
-  ChatMessage
-} from './components/chat/types'
+import type { AgentRun, AgentTurn, ChatWidget, ChatMessage } from './components/chat/types'
 import type { ConversationSearchResultItem } from '../../main/core-v2/domain'
 import type { AgentAppEvent, AgentThreadProjection } from '@shared/agent-runtime'
 import type { TransportPluginAccountSetupEvent } from '@shared/transport-plugins'
@@ -866,7 +861,10 @@ const ensureThreadTitleFromText = async (
 }
 
 // ── 滚动 ──────────────────────────────────────────────────────────
-const scrollToBottom = async (options?: { force?: boolean }): Promise<void> => {
+const scrollToBottom = async (options?: {
+  force?: boolean
+  behavior?: 'auto' | 'smooth'
+}): Promise<void> => {
   if (scrollToBottomRafId != null) return
   scrollToBottomRafId = window.requestAnimationFrame(async () => {
     scrollToBottomRafId = null

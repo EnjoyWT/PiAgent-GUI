@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 import { ChevronDown, ChevronRight, CircleX } from 'lucide-vue-next'
 import Tooltip from '../common/Tooltip.vue'
 import GitDiffView from './GitDiffView.vue'
@@ -17,16 +17,7 @@ const emit = defineEmits<{
   (e: 'widget-layout-change'): void
 }>()
 
-const isExpanded = ref(props.block.step.status === 'running')
-
-watch(
-  () => props.block.step.status,
-  (status) => {
-    if (status === 'running') {
-      isExpanded.value = true
-    }
-  }
-)
+const isExpanded = ref(false)
 
 const toggleExpanded = (): void => {
   isExpanded.value = !isExpanded.value
@@ -103,15 +94,15 @@ const getToolStatusLabel = (): string => {
         />
       </span>
 
-      <ChevronDown
-        v-if="isExpanded"
-        :size="14"
-        class="shrink-0 text-(--theme-text-dim)"
-      />
+      <ChevronDown v-if="isExpanded" :size="14" class="shrink-0 text-(--theme-text-dim)" />
       <ChevronRight v-else :size="14" class="shrink-0 text-(--theme-text-dim)" />
     </button>
 
-    <Transition name="flow-expand" @after-enter="emit('widget-layout-change')" @after-leave="emit('widget-layout-change')">
+    <Transition
+      name="flow-expand"
+      @after-enter="emit('widget-layout-change')"
+      @after-leave="emit('widget-layout-change')"
+    >
       <div v-if="isExpanded" class="flow-expand-shell">
         <div class="flow-expand-inner">
           <div
@@ -130,7 +121,11 @@ const getToolStatusLabel = (): string => {
                 >
               </div>
             </div>
-            <GitDiffView v-if="block.entry.diff?.trim()" :diff="block.entry.diff" />
+            <GitDiffView
+              v-if="block.entry.diff?.trim()"
+              :diff="block.entry.diff"
+              :file-path="block.entry.path"
+            />
             <div v-else class="text-[11px] text-(--theme-text-dim)">暂无 diff</div>
           </div>
         </div>

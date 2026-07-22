@@ -2,10 +2,12 @@
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import '@git-diff-view/vue/styles/diff-view-pure.css'
 import { DiffModeEnum, DiffView } from '@git-diff-view/vue'
+import { buildDiffViewHunks } from './git-diff'
 
 const props = withDefaults(
   defineProps<{
     diff: string
+    filePath?: string
     maxHeight?: number
   }>(),
   {
@@ -14,25 +16,10 @@ const props = withDefaults(
 )
 
 const hunks = computed((): string[] => {
-  const raw = (props.diff ?? '').replace(/\r\n/g, '\n')
-  if (!raw.trim()) return []
-  const lines = raw.split('\n')
-  const hunkStarts: number[] = []
-  for (let i = 0; i < lines.length; i += 1) {
-    if (lines[i].startsWith('@@')) hunkStarts.push(i)
-  }
-  if (hunkStarts.length === 0) return []
-
-  const header = lines.slice(0, hunkStarts[0]).join('\n').trimEnd()
-  const result: string[] = []
-  for (let i = 0; i < hunkStarts.length; i += 1) {
-    const start = hunkStarts[i]
-    const end = i + 1 < hunkStarts.length ? hunkStarts[i + 1] : lines.length
-    const body = lines.slice(start, end).join('\n')
-    result.push(i === 0 && header ? `${header}\n${body}` : body)
-  }
-  return result
+  return buildDiffViewHunks({ diff: props.diff, filePath: props.filePath })
 })
+
+const rawDiff = computed(() => (props.diff ?? '').replace(/\r\n/g, '\n').trimEnd())
 
 const currentTheme = ref<'light' | 'dark'>('light')
 let observer: MutationObserver | null = null
@@ -68,6 +55,10 @@ onUnmounted(() => {
       :diff-view-wrap="false"
     />
   </div>
+  <pre
+    v-else-if="rawDiff.trim()"
+    class="pi-git-diff-raw max-w-full overflow-auto rounded-md bg-(--theme-bg-main) px-2 py-1 text-[11px] leading-relaxed text-(--theme-text-main)"
+    >{{ rawDiff }}</pre>
 </template>
 
 <style scoped>

@@ -5,8 +5,22 @@ export type BottomScrollAnimation = {
   durationMs: number
 }
 
+export type BottomScrollBehavior = 'auto' | 'smooth'
+
 export const shouldFollowLayoutChangeToBottom = (input: { isPinnedToBottom: boolean }): boolean =>
   input.isPinnedToBottom
+
+export const resolveBottomScrollBehavior = (input: {
+  requestedBehavior?: BottomScrollBehavior
+  force?: boolean
+  deltaPx: number
+}): BottomScrollBehavior => {
+  if (input.requestedBehavior === 'auto') return 'auto'
+  if (input.deltaPx <= 1) return 'auto'
+  if (input.requestedBehavior === 'smooth') return 'smooth'
+  if (input.force) return 'auto'
+  return input.deltaPx < 2400 ? 'smooth' : 'auto'
+}
 
 export const getBottomScrollDuration = (distancePx: number): number => {
   const distance = Math.abs(distancePx)

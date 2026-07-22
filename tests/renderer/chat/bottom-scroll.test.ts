@@ -4,6 +4,7 @@ import {
   createBottomScrollAnimation,
   getBottomScrollDuration,
   getBottomScrollFrame,
+  resolveBottomScrollBehavior,
   shouldFollowLayoutChangeToBottom
 } from '../../../src/renderer/src/components/layout/bottom-scroll.ts'
 
@@ -55,4 +56,11 @@ test('bottom scroll animation retargets without jumping backwards', () => {
 test('layout changes only follow the bottom when the viewport was already pinned', () => {
   assert.equal(shouldFollowLayoutChangeToBottom({ isPinnedToBottom: true }), true)
   assert.equal(shouldFollowLayoutChangeToBottom({ isPinnedToBottom: false }), false)
+})
+
+test('bottom scroll does not animate when layout changes shrink the scroll height', () => {
+  assert.equal(resolveBottomScrollBehavior({ deltaPx: -120 }), 'auto')
+  assert.equal(resolveBottomScrollBehavior({ deltaPx: 0 }), 'auto')
+  assert.equal(resolveBottomScrollBehavior({ requestedBehavior: 'smooth', deltaPx: -24 }), 'auto')
+  assert.equal(resolveBottomScrollBehavior({ deltaPx: 180 }), 'smooth')
 })

@@ -100,7 +100,10 @@ type RuntimeEventBridgeOptions = {
     widget: ChatWidget
   ) => void
   onRunSettled: (threadId: string, runId: string, status: string) => Promise<void>
-  scrollToBottom: (options?: { force?: boolean }) => void | Promise<void>
+  scrollToBottom: (options?: {
+    force?: boolean
+    behavior?: 'auto' | 'smooth'
+  }) => void | Promise<void>
 }
 
 const isRuntimeUiDebugEnabled = (): boolean => {
@@ -330,7 +333,7 @@ export const createRuntimeEventBridge = (options: RuntimeEventBridgeOptions) => 
         },
         { agentRunId: event.agentRunId }
       )
-      if (isActiveEvent) void options.scrollToBottom()
+      if (isActiveEvent) void options.scrollToBottom({ behavior: 'auto' })
       return
     }
 
@@ -402,7 +405,7 @@ export const createRuntimeEventBridge = (options: RuntimeEventBridgeOptions) => 
         await options.onRunSettled(threadId, run.id, run.status)
       }
 
-      if (isActiveEvent) void options.scrollToBottom()
+      if (isActiveEvent) void options.scrollToBottom({ behavior: 'auto' })
       return
     }
 
@@ -457,7 +460,7 @@ export const createRuntimeEventBridge = (options: RuntimeEventBridgeOptions) => 
         },
         { agentRunId: event.agentRunId }
       )
-      if (isActiveEvent) void options.scrollToBottom()
+      if (isActiveEvent) void options.scrollToBottom({ behavior: 'auto' })
       return
     }
 
@@ -540,7 +543,7 @@ export const createRuntimeEventBridge = (options: RuntimeEventBridgeOptions) => 
           })) ?? [],
         messageCount: targetMessages.length
       })
-      if (isActiveEvent) void options.scrollToBottom()
+      if (isActiveEvent) void options.scrollToBottom({ behavior: 'auto' })
     }
   }
 }

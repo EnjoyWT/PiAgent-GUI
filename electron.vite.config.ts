@@ -37,7 +37,8 @@ export default defineConfig({
   },
   renderer: {
     server: {
-      hmr: false
+      hmr: true,
+      port: 5173
     },
     optimizeDeps: {
       exclude: ['yl-animated-caret']

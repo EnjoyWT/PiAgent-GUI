@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import {
   Wrench,
   ChevronDown,
@@ -25,16 +25,7 @@ const emit = defineEmits<{
 
 const step = computed((): ChatToolStep => props.block.step)
 
-const isExpanded = ref(step.value.status === 'running')
-
-watch(
-  () => step.value.status,
-  (status) => {
-    if (status === 'running') {
-      isExpanded.value = true
-    }
-  }
-)
+const isExpanded = ref(false)
 
 const toggleExpanded = (): void => {
   isExpanded.value = !isExpanded.value
@@ -151,11 +142,7 @@ const formatThinkingDuration = (durationMs: number): string => {
         :aria-label="getToolStatusLabel()"
         class="shrink-0 inline-flex items-center justify-center text-(--theme-text-main)"
       >
-        <CircleCheckBig
-          v-if="step.status === 'done'"
-          :size="14"
-          class="text-emerald-600"
-        />
+        <CircleCheckBig v-if="step.status === 'done'" :size="14" class="text-emerald-600" />
         <span
           v-else-if="step.status === 'running'"
           class="tool-running-cursor"
@@ -173,16 +160,16 @@ const formatThinkingDuration = (durationMs: number): string => {
         {{ formatThinkingDuration(step.durationMs ?? 0) }}
       </span>
 
-      <ChevronDown
-        v-if="isExpanded"
-        :size="14"
-        class="shrink-0 text-(--theme-text-dim)"
-      />
+      <ChevronDown v-if="isExpanded" :size="14" class="shrink-0 text-(--theme-text-dim)" />
       <ChevronRight v-else :size="14" class="shrink-0 text-(--theme-text-dim)" />
     </button>
 
     <!-- 展开内容 -->
-    <Transition name="flow-expand" @after-enter="emit('widget-layout-change')" @after-leave="emit('widget-layout-change')">
+    <Transition
+      name="flow-expand"
+      @after-enter="emit('widget-layout-change')"
+      @after-leave="emit('widget-layout-change')"
+    >
       <div v-if="isExpanded" class="flow-expand-shell">
         <div class="flow-expand-inner">
           <div
