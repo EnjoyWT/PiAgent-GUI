@@ -176,7 +176,12 @@ const messageRenderKey = (message: ChatMessage, index: number): string =>
   getMessageRenderKey(message, index)
 
 const handleMessageWidgetLayoutChange = (): void => {
-  void scrollToBottom({ force: true, behavior: props.isStreaming ? 'auto' : 'smooth' })
+  // 同步滚动：在 Vue DOM 更新（v-show 隐藏）之前把 scrollTop 推到最高，
+  // 之后浏览器对递减的 scrollHeight 做 clamp，避免 paint 错位画面。
+  const el = scrollContainer.value
+  if (!el) return
+  el.scrollTop = el.scrollHeight
+  isPinnedToBottom.value = true
 }
 
 const scrollContainer = ref<HTMLElement | null>(null)
@@ -200,9 +205,24 @@ const maybeRequestOlderHistory = (): void => {
   if (el.scrollTop <= TOP_LOAD_THRESHOLD_PX) emit('load-older')
 }
 
+let lastScrollHeight = 0
+
 const handleScroll = (): void => {
   if (bottomScrollAnimation) return
-  updatePinnedState()
+  const el = scrollContainer.value
+  if (!el) return
+  const curScrollHeight = el.scrollHeight
+  const distanceToBottom = curScrollHeight - el.scrollTop - el.clientHeight
+
+  // 兜底：内容折叠导致 scrollHeight 降低时，如果之前钉在底部则保持底部对齐
+  if (curScrollHeight < lastScrollHeight && isPinnedToBottom.value) {
+    el.scrollTop = curScrollHeight
+    isPinnedToBottom.value = true
+  } else {
+    isPinnedToBottom.value = distanceToBottom <= BOTTOM_LOCK_THRESHOLD_PX
+  }
+
+  lastScrollHeight = curScrollHeight
   maybeRequestOlderHistory()
 }
 

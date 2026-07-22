@@ -134,8 +134,8 @@ jobs:
           pnpm run build:computer-use-helper
           pnpm exec electron-vite build
 
-          # Build only (no publish). Release creation is a separate step below.
-          pnpm exec electron-builder --mac --arm64 --x64
+          # Build only (explicit no publish). gh release create handles the release.
+          pnpm exec electron-builder --mac --arm64 --x64 -p never
 
       - name: Create GitHub Release & upload assets
         shell: bash
