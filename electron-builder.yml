@@ -59,3 +59,4 @@ publish:
   provider: github
   owner: EnjoyWT
   repo: PiAgent-GUI
+  releaseType: release
