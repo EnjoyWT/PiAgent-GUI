@@ -14,58 +14,47 @@
         </div>
         <div class="flex items-center justify-between gap-3">
           <span class="text-(--theme-text-dim)">当前版本</span>
-          <span class="font-semibold text-(--theme-text-main)">v{{ updateStatus.currentVersion }}</span>
+          <span class="font-semibold text-(--theme-text-main)"
+            >v{{ updateStatus.currentVersion }}</span
+          >
         </div>
         <!-- 状态行已移除，更新结果通过弹窗反馈 -->
-        <div
-          v-if="latestVersionText"
-          class="flex items-center justify-between gap-3"
-        >
+        <div v-if="latestVersionText" class="flex items-center justify-between gap-3">
           <span class="text-(--theme-text-dim)">最新版本</span>
           <span class="font-semibold text-(--theme-text-main)">{{ latestVersionText }}</span>
         </div>
-        <div
-          v-if="updateStatus.checkedAt"
-          class="flex items-center justify-between gap-3"
-        >
+        <div v-if="updateStatus.checkedAt" class="flex items-center justify-between gap-3">
           <span class="text-(--theme-text-dim)">上次检查</span>
-          <span class="text-(--theme-text-main)">{{ formatCheckedAt(updateStatus.checkedAt) }}</span>
+          <span class="text-(--theme-text-main)">{{
+            formatCheckedAt(updateStatus.checkedAt)
+          }}</span>
         </div>
       </div>
 
       <div class="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          class="inline-flex items-center gap-2 px-4 h-10 rounded-xl border border-(--theme-border-base) bg-(--theme-bg-sidebar) hover:bg-(--theme-bg-hover-btn) text-sm font-medium text-(--theme-text-main) disabled:opacity-50"
-          :disabled="isBusy"
-          @click="checkForUpdates"
+          class="relative inline-flex h-10 min-w-42 items-center justify-center gap-2 overflow-hidden rounded-xl px-4 text-sm font-medium disabled:cursor-default disabled:opacity-75"
+          :class="primaryButtonClass"
+          :disabled="primaryControl.disabled"
+          @click="handlePrimaryUpdateAction"
         >
-          <RefreshCw
+          <component
+            :is="primaryIcon"
             :size="16"
             class="shrink-0"
-            :class="isChecking || updateStatus.phase === 'checking' ? 'animate-spin' : ''"
+            :class="updateStatus.phase === 'checking' ? 'animate-spin' : ''"
           />
-          <span>{{ checkButtonLabel }}</span>
-        </button>
-
-        <button
-          v-if="canDownload"
-          type="button"
-          class="px-4 h-10 rounded-xl bg-[#00ba88] hover:opacity-90 text-sm font-medium text-white disabled:opacity-50"
-          :disabled="isBusy"
-          @click="downloadUpdate"
-        >
-          {{ isDownloading ? '下载中…' : `下载 v${updateStatus.updateInfo?.version ?? ''}` }}
-        </button>
-
-        <button
-          v-if="updateStatus.phase === 'downloaded'"
-          type="button"
-          class="px-4 h-10 rounded-xl bg-[#00ba88] hover:opacity-90 text-sm font-medium text-white disabled:opacity-50"
-          :disabled="isBusy"
-          @click="quitAndInstall"
-        >
-          重启安装
+          <span class="relative z-1">{{ primaryControl.label }}</span>
+          <span
+            v-if="primaryControl.progressPercent !== null"
+            class="pointer-events-none absolute inset-x-3 bottom-1 h-0.5 overflow-hidden rounded-full bg-white/30"
+          >
+            <span
+              class="block h-full rounded-full bg-white transition-[width] duration-200"
+              :style="{ width: `${primaryControl.progressPercent}%` }"
+            ></span>
+          </span>
         </button>
 
         <button
@@ -78,34 +67,13 @@
         </button>
       </div>
 
-      <div
-        v-if="updateStatus.phase === 'downloading' && updateStatus.progress"
-        class="space-y-2"
-      >
-        <div class="h-2 rounded-full bg-(--theme-bg-content) overflow-hidden">
-          <div
-            class="h-full bg-[#00ba88] transition-all duration-200"
-            :style="{ width: `${Math.max(0, Math.min(100, updateStatus.progress.percent))}%` }"
-          ></div>
-        </div>
-        <div class="text-xs text-(--theme-text-dim)">
-          已下载 {{ Math.floor(updateStatus.progress.percent) }}%
-          <span v-if="updateStatus.progress.total > 0">
-            · {{ formatBytes(updateStatus.progress.transferred) }} /
-            {{ formatBytes(updateStatus.progress.total) }}
-          </span>
-        </div>
+      <div v-if="downloadDetailText" class="text-xs text-(--theme-text-dim)">
+        {{ downloadDetailText }}
       </div>
 
-      <div
-        v-if="resultHint"
-        class="text-sm font-medium leading-relaxed"
-        :class="resultHintClass"
-      >
+      <div v-if="resultHint" class="text-sm font-medium leading-relaxed" :class="resultHintClass">
         {{ resultHint }}
       </div>
-
-
 
       <div
         v-if="updateStatus.updateInfo?.releaseNotes"
@@ -114,13 +82,75 @@
         {{ updateStatus.updateInfo.releaseNotes }}
       </div>
     </div>
+
+    <BaseDialog
+      :open="updatePromptOpen"
+      aria-label="应用更新"
+      width="sm"
+      @close="closeUpdatePrompt"
+    >
+      <template #header>
+        <div class="space-y-1">
+          <h3 class="text-base font-semibold text-(--theme-text-bright)">
+            {{ updatePromptTitle }}
+          </h3>
+          <p class="text-xs text-(--theme-text-dim)">
+            当前 v{{ updateStatus.currentVersion }}，最新 v{{ updatePromptVersion }}
+          </p>
+        </div>
+      </template>
+
+      <div class="space-y-3 text-sm text-(--theme-text-main)">
+        <p>{{ updatePromptMessage }}</p>
+        <div
+          v-if="updatePromptReleaseNotes"
+          class="max-h-34 overflow-y-auto rounded-xl border border-(--theme-border-base) bg-(--theme-bg-sidebar) p-3 text-xs leading-relaxed text-(--theme-text-dim) whitespace-pre-wrap"
+        >
+          {{ updatePromptReleaseNotes }}
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            class="h-9 rounded-xl border border-(--theme-border-base) bg-(--theme-bg-main) px-4 text-[13px] text-(--theme-text-main) hover:bg-(--theme-bg-hover-btn)"
+            @click="closeUpdatePrompt"
+          >
+            稍后
+          </button>
+          <button
+            v-if="updatePromptPrimaryAction === 'download'"
+            type="button"
+            class="inline-flex h-9 items-center gap-1.5 rounded-xl border border-(--theme-border-base) bg-(--theme-bg-main) px-4 text-[13px] text-(--theme-text-main) hover:bg-(--theme-bg-hover-btn)"
+            @click="handlePromptRelease"
+          >
+            打开 Release
+            <ExternalLink :size="14" />
+          </button>
+          <button
+            type="button"
+            class="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#00ba88] px-4 text-[13px] font-semibold text-white hover:opacity-90"
+            @click="handlePromptPrimaryAction"
+          >
+            <component :is="updatePromptPrimaryIcon" :size="14" />
+            {{ updatePromptPrimaryLabel }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { ExternalLink, RefreshCw } from 'lucide-vue-next'
-import type { AppUpdateStatus } from '@shared/app-update'
+import { CircleArrowUp, Download, ExternalLink, RefreshCw } from 'lucide-vue-next'
+import BaseDialog from '@renderer/components/common/BaseDialog.vue'
+import {
+  buildAppUpdatePrimaryControl,
+  type AppUpdatePrimaryAction,
+  type AppUpdateStatus
+} from '@shared/app-update'
 import { globalDialog } from '@renderer/utils/dialog'
 
 const updateStatus = reactive<AppUpdateStatus>({
@@ -135,19 +165,18 @@ const updateStatus = reactive<AppUpdateStatus>({
   checkedAt: null
 })
 
-const isChecking = ref(false)
-const isDownloading = ref(false)
+const updatePromptOpen = ref(false)
+const promptedUpdateStatus = ref<AppUpdateStatus | null>(null)
 let stopStatusListener: (() => void) | null = null
 
-const isBusy = computed(
-  () => isChecking.value || isDownloading.value || updateStatus.phase === 'downloading'
-)
+const primaryControl = computed(() => buildAppUpdatePrimaryControl(updateStatus))
 
-const canDownload = computed(
-  () =>
-    updateStatus.phase === 'available' ||
-    (updateStatus.phase === 'error' && Boolean(updateStatus.updateInfo?.version))
-)
+const primaryIcon = computed(() => {
+  if (primaryControl.value.action === 'download') return Download
+  if (primaryControl.value.action === 'install') return CircleArrowUp
+  if (primaryControl.value.action === 'open-release') return ExternalLink
+  return RefreshCw
+})
 
 const latestVersionText = computed(() => {
   const version = updateStatus.updateInfo?.version
@@ -163,17 +192,26 @@ const latestVersionText = computed(() => {
   return `v${version}`
 })
 
-const checkButtonLabel = computed(() => {
-  if (isChecking.value || updateStatus.phase === 'checking') {
-    return '检查中…'
+const primaryButtonClass = computed(() => {
+  if (
+    primaryControl.value.action === 'download' ||
+    primaryControl.value.action === 'install' ||
+    updateStatus.phase === 'downloading'
+  ) {
+    return 'bg-[#00ba88] text-white hover:opacity-90'
   }
-  const current = updateStatus.currentVersion || '—'
-  return `检查更新 · v${current}`
+  return 'border border-(--theme-border-base) bg-(--theme-bg-sidebar) text-(--theme-text-main) hover:bg-(--theme-bg-hover-btn)'
 })
 
 const resultHint = computed(() => {
+  if (updateStatus.phase === 'error' && updateStatus.error) {
+    return updateStatus.error
+  }
   if (updateStatus.phase === 'available' && updateStatus.updateInfo?.version) {
     return `发现最新版本：v${updateStatus.updateInfo.version}`
+  }
+  if (updateStatus.phase === 'downloading') {
+    return '正在后台下载更新，关闭这个页面不会中断。'
   }
   if (updateStatus.phase === 'not-available' && updateStatus.updateInfo?.version) {
     return `当前已是最新版本：v${updateStatus.updateInfo.version}`
@@ -188,11 +226,61 @@ const resultHint = computed(() => {
 })
 
 const resultHintClass = computed(() => {
+  if (updateStatus.phase === 'error') return 'text-rose-500'
   if (updateStatus.phase === 'available') return 'text-amber-500'
   if (updateStatus.phase === 'not-available' || updateStatus.phase === 'downloaded') {
     return 'text-emerald-600'
   }
   return 'text-(--theme-text-main)'
+})
+
+const downloadDetailText = computed(() => {
+  if (updateStatus.phase !== 'downloading' || !updateStatus.progress) return ''
+  const percent = Math.floor(Math.max(0, Math.min(100, updateStatus.progress.percent)))
+  if (updateStatus.progress.total <= 0) return `已下载 ${percent}%`
+  return `已下载 ${percent}% · ${formatBytes(updateStatus.progress.transferred)} / ${formatBytes(updateStatus.progress.total)}`
+})
+
+const updatePromptControl = computed(() =>
+  promptedUpdateStatus.value ? buildAppUpdatePrimaryControl(promptedUpdateStatus.value) : null
+)
+
+const updatePromptPrimaryAction = computed<AppUpdatePrimaryAction>(
+  () => updatePromptControl.value?.action ?? 'none'
+)
+
+const updatePromptVersion = computed(
+  () => promptedUpdateStatus.value?.updateInfo?.version ?? updateStatus.updateInfo?.version ?? '—'
+)
+
+const updatePromptReleaseNotes = computed(
+  () => promptedUpdateStatus.value?.updateInfo?.releaseNotes ?? ''
+)
+
+const updatePromptTitle = computed(() =>
+  updatePromptPrimaryAction.value === 'install' ? '更新已下载' : '发现新版本'
+)
+
+const updatePromptMessage = computed(() => {
+  if (updatePromptPrimaryAction.value === 'install') {
+    return '更新已下载完成，重启应用即可完成安装。'
+  }
+  if (updatePromptPrimaryAction.value === 'open-release') {
+    return '当前环境不支持应用内下载，请打开 Release 页面手动下载。'
+  }
+  return '可以现在开始下载。下载会在后台继续，关闭关于页面不会中断。'
+})
+
+const updatePromptPrimaryLabel = computed(() => {
+  if (updatePromptPrimaryAction.value === 'download') return '立即下载'
+  return updatePromptControl.value?.label ?? '确定'
+})
+
+const updatePromptPrimaryIcon = computed(() => {
+  if (updatePromptPrimaryAction.value === 'download') return Download
+  if (updatePromptPrimaryAction.value === 'install') return CircleArrowUp
+  if (updatePromptPrimaryAction.value === 'open-release') return ExternalLink
+  return RefreshCw
 })
 
 const applyUpdateStatus = (status: AppUpdateStatus) => {
@@ -231,7 +319,9 @@ const loadUpdateStatus = async () => {
 }
 
 const checkForUpdates = async () => {
-  isChecking.value = true
+  updateStatus.phase = 'checking'
+  updateStatus.error = null
+  updateStatus.progress = null
   try {
     const result = await window.api.appUpdate.check()
     applyUpdateStatus(result.status)
@@ -245,15 +335,14 @@ const checkForUpdates = async () => {
     }
 
     if (result.updateAvailable && result.status.updateInfo?.version) {
-      await globalDialog.alert({
-        title: '发现新版本',
-        message: `发现最新版本：v${result.status.updateInfo.version}`
-      })
+      openUpdatePrompt(result.status)
       return
     }
 
     const latest =
-      result.status.updateInfo?.version || result.status.currentVersion || updateStatus.currentVersion
+      result.status.updateInfo?.version ||
+      result.status.currentVersion ||
+      updateStatus.currentVersion
     await globalDialog.alert({
       title: '已是最新版本',
       message: `当前已是最新版本：v${latest}`
@@ -266,21 +355,28 @@ const checkForUpdates = async () => {
       title: '检查更新失败',
       message
     })
-  } finally {
-    isChecking.value = false
   }
 }
 
-const downloadUpdate = async () => {
-  isDownloading.value = true
+const downloadUpdate = (): void => {
+  updateStatus.phase = 'downloading'
+  updateStatus.error = null
+  updateStatus.progress = updateStatus.progress ?? {
+    percent: 0,
+    bytesPerSecond: 0,
+    transferred: 0,
+    total: 0
+  }
+  void runDownloadUpdate()
+}
+
+const runDownloadUpdate = async (): Promise<void> => {
   try {
     const status = await window.api.appUpdate.download()
     applyUpdateStatus(status)
   } catch (error) {
     updateStatus.phase = 'error'
     updateStatus.error = error instanceof Error ? error.message : String(error)
-  } finally {
-    isDownloading.value = false
   }
 }
 
@@ -294,10 +390,26 @@ const quitAndInstall = async () => {
   }
 }
 
+const handlePrimaryUpdateAction = async (): Promise<void> => {
+  if (primaryControl.value.disabled || primaryControl.value.action === 'none') return
+  if (primaryControl.value.action === 'check') {
+    await checkForUpdates()
+    return
+  }
+  if (primaryControl.value.action === 'download') {
+    downloadUpdate()
+    return
+  }
+  if (primaryControl.value.action === 'install') {
+    await quitAndInstall()
+    return
+  }
+  await openReleasePage()
+}
+
 const openReleasePage = async () => {
   const url =
-    (updateStatus.releasePageUrl || '').trim() ||
-    'https://github.com/EnjoyWT/PiAgent-GUI/releases'
+    (updateStatus.releasePageUrl || '').trim() || 'https://github.com/EnjoyWT/PiAgent-GUI/releases'
   try {
     // Main process shell.openExternal → system default browser (not in-app).
     await window.api.appUpdate.openReleasePage()
@@ -313,6 +425,37 @@ const openReleasePage = async () => {
       })
     }
   }
+}
+
+const openUpdatePrompt = (status: AppUpdateStatus): void => {
+  promptedUpdateStatus.value = status
+  updatePromptOpen.value = true
+}
+
+const closeUpdatePrompt = (): void => {
+  updatePromptOpen.value = false
+  promptedUpdateStatus.value = null
+}
+
+const handlePromptPrimaryAction = async (): Promise<void> => {
+  const action = updatePromptPrimaryAction.value
+  closeUpdatePrompt()
+  if (action === 'download') {
+    downloadUpdate()
+    return
+  }
+  if (action === 'install') {
+    await quitAndInstall()
+    return
+  }
+  if (action === 'open-release') {
+    await openReleasePage()
+  }
+}
+
+const handlePromptRelease = async (): Promise<void> => {
+  closeUpdatePrompt()
+  await openReleasePage()
 }
 
 onMounted(async () => {

@@ -229,13 +229,26 @@
         >
           <MoreHorizontal :size="20" class="text-(--theme-text-dim)" />
         </div>
-        <div
-          v-if="props.hasUpdate"
-          class="flex items-center bg-(--theme-accent)/10 text-(--theme-accent) px-2.5 py-1.5 rounded-xl text-sm cursor-pointer hover:bg-(--theme-accent)/20 transition-colors"
+        <button
+          v-if="props.updateBadge"
+          type="button"
+          class="relative flex items-center overflow-hidden px-2.5 py-1.5 rounded-xl text-sm cursor-pointer transition-colors"
+          :class="updateBadgeClass"
+          aria-label="打开更新设置"
+          @click="emit('openUpdateSettings')"
         >
           <CircleArrowUp :size="16" class="mr-1.5 opacity-80" />
-          <span>更新</span>
-        </div>
+          <span>{{ props.updateBadge.label }}</span>
+          <span
+            v-if="props.updateBadge.progressPercent !== null"
+            class="pointer-events-none absolute inset-x-2 bottom-0.75 h-0.5 overflow-hidden rounded-full bg-current/20"
+          >
+            <span
+              class="block h-full rounded-full bg-current transition-[width] duration-200"
+              :style="{ width: `${props.updateBadge.progressPercent}%` }"
+            ></span>
+          </span>
+        </button>
       </div>
     </div>
   </aside>
@@ -243,6 +256,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { WorkspaceRow, ThreadRow as SidebarThread } from '../../../../preload/db-types'
+import type { AppUpdateSidebarBadge } from '@shared/app-update'
 import Tooltip from '../common/Tooltip.vue'
 import { useHoverIntent } from '@renderer/composables/useHoverIntent'
 import {
@@ -270,7 +284,7 @@ const props = defineProps<{
   activeThreadId: string | null
   streamingByThreadId: Record<string, boolean>
   runFinishedIndicatorByThreadId: Record<string, boolean>
-  hasUpdate: boolean
+  updateBadge: AppUpdateSidebarBadge | null
 }>()
 
 const emit = defineEmits<{
@@ -281,6 +295,7 @@ const emit = defineEmits<{
   (e: 'deleteThread', value: string): void
   (e: 'deleteWorkspace', workspacePath: string): void
   (e: 'openSettings'): void
+  (e: 'openUpdateSettings'): void
   (e: 'createThreadInWorkspace', workspacePath: string): void
   (e: 'createThread'): void
   (e: 'createTempThread'): void
@@ -370,6 +385,20 @@ const isThreadStreaming = (threadId: string): boolean =>
 
 const hasRunFinishedIndicator = (threadId: string): boolean =>
   Boolean(props.runFinishedIndicatorByThreadId?.[threadId])
+
+const updateBadgeClass = computed(() => {
+  if (!props.updateBadge) return ''
+  if (props.updateBadge.tone === 'downloaded') {
+    return 'bg-emerald-500/12 text-emerald-600 hover:bg-emerald-500/20'
+  }
+  if (props.updateBadge.tone === 'downloading') {
+    return 'bg-sky-500/12 text-sky-600 hover:bg-sky-500/20'
+  }
+  if (props.updateBadge.tone === 'error') {
+    return 'bg-rose-500/10 text-rose-500 hover:bg-rose-500/18'
+  }
+  return 'bg-(--theme-accent)/10 text-(--theme-accent) hover:bg-(--theme-accent)/20'
+})
 
 const onCreateThreadInWorkspace = (workspacePath: string): void => {
   if (workspacePath === TEMP_WORKSPACE_KEY) {

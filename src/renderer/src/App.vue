@@ -76,7 +76,7 @@
           :current-workspace-path="currentWorkspacePath"
           :streaming-by-thread-id="streamingByThreadId"
           :run-finished-indicator-by-thread-id="runFinishedIndicatorByThreadId"
-          :has-update="hasUpdate"
+          :update-badge="appUpdateBadge"
           @update:sidebar-width="(value) => (sidebarWidth = value)"
           @update:resize-active="(value) => (isSidebarResizeActive = value)"
           @select-thread="selectThreadById"
@@ -84,6 +84,7 @@
           @delete-thread="deleteThreadById"
           @delete-workspace="deleteWorkspaceByPath"
           @open-settings="openSettings"
+          @open-update-settings="openUpdateSettings"
           @create-thread-in-workspace="createThreadInWorkspace"
           @create-thread="createNewThread"
           @create-temp-thread="createTemporaryThread"
@@ -206,6 +207,7 @@ import { globalDialog } from './utils/dialog'
 import type { AgentRun, AgentTurn, ChatWidget, ChatMessage } from './components/chat/types'
 import type { ConversationSearchResultItem } from '../../main/core-v2/domain'
 import type { AgentAppEvent, AgentThreadProjection } from '@shared/agent-runtime'
+import { buildAppUpdateSidebarBadge, type AppUpdateStatus } from '@shared/app-update'
 import type { TransportPluginAccountSetupEvent } from '@shared/transport-plugins'
 import type { WorkspaceRow, ThreadRow } from '../../preload/db-types'
 import {
@@ -337,7 +339,8 @@ const {
 const threadInputCache = new Map<string, { text: string; attachments: File[] }>()
 const rightAreaRef = ref<InstanceType<typeof RightArea> | null>(null)
 let scrollToBottomRafId: number | null = null
-const hasUpdate = ref(false)
+const appUpdateStatus = ref<AppUpdateStatus | null>(null)
+const appUpdateBadge = computed(() => buildAppUpdateSidebarBadge(appUpdateStatus.value))
 const {
   runtimeModelOptions,
   selectedRuntimeModel,
@@ -999,6 +1002,7 @@ let offThreadPlanEvent: (() => void) | null = null
 let offSubagentPanelEvent: (() => void) | null = null
 let offTransportAccountSetupEvent: (() => void) | null = null
 let offWorkspacesChanged: (() => void) | null = null
+let offAppUpdateStatus: (() => void) | null = null
 
 const applyTransportAccountSetupEventToThreadRuns = (
   event: TransportPluginAccountSetupEvent
@@ -1137,6 +1141,15 @@ onMounted(async () => {
     window.addEventListener('focus', loadAppTheme)
   } catch {
     // ignore
+  }
+
+  try {
+    appUpdateStatus.value = await window.api.appUpdate.getStatus()
+    offAppUpdateStatus = window.api.appUpdate.onStatus((status) => {
+      appUpdateStatus.value = status
+    })
+  } catch {
+    // Update status is optional in auxiliary windows.
   }
 
   offRuntimeInspectorThread = window.api.onRuntimeInspectorThread((threadId) => {
@@ -1305,6 +1318,7 @@ onMounted(async () => {
 })
 
 const openSettings = (category?: string): void => window.api.openSettings(category)
+const openUpdateSettings = (): void => openSettings('about')
 const openContextSettings = (): void => window.api.openSettings('chat')
 
 const openWorkspaceFolder = async (): Promise<void> => {
@@ -1385,6 +1399,7 @@ onUnmounted(() => {
   offSubagentPanelEvent?.()
   offTransportAccountSetupEvent?.()
   offWorkspacesChanged?.()
+  offAppUpdateStatus?.()
   if (!isSettingsPage.value && !isKnowledgeManagerPage.value && !isRuntimeInspectorPage.value) {
     void window.api.runtime.setActiveThread(null)
   }

@@ -1,11 +1,5 @@
 export type AppUpdatePhase =
-  | 'idle'
-  | 'checking'
-  | 'not-available'
-  | 'available'
-  | 'downloading'
-  | 'downloaded'
-  | 'error'
+  'idle' | 'checking' | 'not-available' | 'available' | 'downloading' | 'downloaded' | 'error'
 
 export interface AppUpdateVersionInfo {
   version: string
@@ -38,9 +32,152 @@ export interface AppUpdateCheckResult {
   updateAvailable: boolean
 }
 
+export type AppUpdatePrimaryAction = 'check' | 'download' | 'install' | 'open-release' | 'none'
+
+export interface AppUpdatePrimaryControl {
+  action: AppUpdatePrimaryAction
+  label: string
+  disabled: boolean
+  progressPercent: number | null
+}
+
+export type AppUpdateSidebarBadgeTone = 'available' | 'downloading' | 'downloaded' | 'error'
+
+export interface AppUpdateSidebarBadge {
+  label: string
+  tone: AppUpdateSidebarBadgeTone
+  progressPercent: number | null
+}
+
 export const APP_UPDATE_RELEASE_OWNER = 'EnjoyWT'
 export const APP_UPDATE_RELEASE_REPO = 'PiAgent-GUI'
 export const APP_UPDATE_RELEASE_PAGE_URL = `https://github.com/${APP_UPDATE_RELEASE_OWNER}/${APP_UPDATE_RELEASE_REPO}/releases`
+
+const canUseInAppUpdate = (status: AppUpdateStatus): boolean =>
+  status.supported && status.isPackaged
+
+export const clampAppUpdateProgressPercent = (percent: number | null | undefined): number => {
+  if (!Number.isFinite(percent)) return 0
+  return Math.max(0, Math.min(100, Number(percent)))
+}
+
+const formatWholePercent = (percent: number | null | undefined): string =>
+  `${Math.floor(clampAppUpdateProgressPercent(percent))}%`
+
+export function buildAppUpdatePrimaryControl(status: AppUpdateStatus): AppUpdatePrimaryControl {
+  const version = status.updateInfo?.version
+  const checkLabel = `检查更新 · v${status.currentVersion || '—'}`
+
+  if (status.phase === 'checking') {
+    return {
+      action: 'none',
+      label: '检查中…',
+      disabled: true,
+      progressPercent: null
+    }
+  }
+
+  if (status.phase === 'downloading') {
+    const progressPercent = clampAppUpdateProgressPercent(status.progress?.percent)
+    return {
+      action: 'none',
+      label: `下载中 ${formatWholePercent(progressPercent)}`,
+      disabled: true,
+      progressPercent
+    }
+  }
+
+  if (status.phase === 'downloaded') {
+    return {
+      action: canUseInAppUpdate(status) ? 'install' : 'open-release',
+      label: canUseInAppUpdate(status) ? '重启安装' : '打开 Release',
+      disabled: false,
+      progressPercent: 100
+    }
+  }
+
+  if (status.phase === 'available') {
+    if (!canUseInAppUpdate(status)) {
+      return {
+        action: 'open-release',
+        label: '打开 Release',
+        disabled: false,
+        progressPercent: null
+      }
+    }
+    return {
+      action: 'download',
+      label: version ? `下载 v${version}` : '下载更新',
+      disabled: false,
+      progressPercent: null
+    }
+  }
+
+  if (status.phase === 'error') {
+    if (version && canUseInAppUpdate(status)) {
+      return {
+        action: 'download',
+        label: '重试下载',
+        disabled: false,
+        progressPercent: null
+      }
+    }
+    return {
+      action: 'open-release',
+      label: '打开 Release',
+      disabled: false,
+      progressPercent: null
+    }
+  }
+
+  return {
+    action: 'check',
+    label: checkLabel,
+    disabled: false,
+    progressPercent: null
+  }
+}
+
+export function buildAppUpdateSidebarBadge(
+  status: AppUpdateStatus | null | undefined
+): AppUpdateSidebarBadge | null {
+  if (!status) return null
+
+  if (status.phase === 'available') {
+    return {
+      label: '更新',
+      tone: 'available',
+      progressPercent: null
+    }
+  }
+
+  if (status.phase === 'downloading') {
+    const progressPercent = clampAppUpdateProgressPercent(status.progress?.percent)
+    return {
+      label: `下载 ${formatWholePercent(progressPercent)}`,
+      tone: 'downloading',
+      progressPercent
+    }
+  }
+
+  if (status.phase === 'downloaded') {
+    return {
+      label: '可安装',
+      tone: 'downloaded',
+      progressPercent: 100
+    }
+  }
+
+  if (status.phase === 'error' && status.updateInfo?.version) {
+    return {
+      label: '重试',
+      tone: 'error',
+      progressPercent: null
+    }
+  }
+
+  return null
+}
 
 /**
  * Convert raw update errors to user-friendly Chinese messages.
