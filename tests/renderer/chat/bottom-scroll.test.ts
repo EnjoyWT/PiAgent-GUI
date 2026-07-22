@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 import {
   createBottomScrollAnimation,
   getBottomScrollDuration,
-  getBottomScrollFrame
+  getBottomScrollFrame,
+  shouldFollowLayoutChangeToBottom
 } from '../../../src/renderer/src/components/layout/bottom-scroll.ts'
 
 test('bottom scroll duration scales with distance and stays bounded', () => {
@@ -49,4 +50,9 @@ test('bottom scroll animation retargets without jumping backwards', () => {
 
   assert.ok(afterRetarget.top >= beforeRetarget)
   assert.ok(afterRetarget.top < 420)
+})
+
+test('layout changes only follow the bottom when the viewport was already pinned', () => {
+  assert.equal(shouldFollowLayoutChangeToBottom({ isPinnedToBottom: true }), true)
+  assert.equal(shouldFollowLayoutChangeToBottom({ isPinnedToBottom: false }), false)
 })

@@ -21,6 +21,7 @@ import type { SubagentPanelState } from '@shared/subagent-panel'
 import {
   createBottomScrollAnimation,
   getBottomScrollFrame,
+  shouldFollowLayoutChangeToBottom,
   type BottomScrollAnimation
 } from './bottom-scroll'
 
@@ -176,12 +177,8 @@ const messageRenderKey = (message: ChatMessage, index: number): string =>
   getMessageRenderKey(message, index)
 
 const handleMessageWidgetLayoutChange = (): void => {
-  // 同步滚动：在 Vue DOM 更新（v-show 隐藏）之前把 scrollTop 推到最高，
-  // 之后浏览器对递减的 scrollHeight 做 clamp，避免 paint 错位画面。
-  const el = scrollContainer.value
-  if (!el) return
-  el.scrollTop = el.scrollHeight
-  isPinnedToBottom.value = true
+  if (!shouldFollowLayoutChangeToBottom({ isPinnedToBottom: isPinnedToBottom.value })) return
+  void scrollToBottom({ behavior: props.isStreaming ? 'auto' : 'smooth' })
 }
 
 const scrollContainer = ref<HTMLElement | null>(null)
@@ -372,7 +369,7 @@ watch(
   () => props.messages.length,
   () => {
     updatePinnedState()
-    scrollToBottom({ force: true })
+    scrollToBottom()
   }
 )
 
@@ -653,7 +650,9 @@ defineExpose({
 
 @keyframes search-hit-glow {
   0% {
-    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4), 0 0 30px rgba(99, 102, 241, 0.22);
+    box-shadow:
+      0 0 0 0 rgba(99, 102, 241, 0.4),
+      0 0 30px rgba(99, 102, 241, 0.22);
     background-color: rgba(99, 102, 241, 0.1);
   }
   100% {

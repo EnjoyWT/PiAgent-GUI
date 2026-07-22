@@ -31,6 +31,7 @@ export type ThinkingRenderBlock = {
   startedAt: number
   endedAt?: number
   isActive: boolean
+  autoCollapse: boolean
 }
 
 export type TextRenderBlock = {
@@ -331,8 +332,7 @@ const resolveWidgetFromToolStep = (step: ChatToolStep): ChatWidget | null => {
           title: asString(parsed.title) || undefined,
           html,
           config: asRecord(parsed.config) as
-            | { showHeader?: boolean; fullWidth?: boolean }
-            | undefined
+            { showHeader?: boolean; fullWidth?: boolean } | undefined
         }
       }
     } catch {
@@ -519,7 +519,8 @@ export const buildMessageRenderFlow = (params: {
           thinking: timelineItem.thinking,
           startedAt: timelineItem.startedAt,
           endedAt: timelineItem.endedAt,
-          isActive: false
+          isActive: false,
+          autoCollapse: false
         })
         continue
       }
@@ -743,7 +744,7 @@ export const buildMessageRenderFlow = (params: {
 
   const lastCurrentTurnBlock = currentTurnBlocks.at(-1) ?? null
 
-  normalizedBlocks.forEach((block) => {
+  normalizedBlocks.forEach((block, index) => {
     const isRunActive = run.status === 'running'
     const isCurrentTurnBlock = belongsToTurn(block, currentTurn)
     const isLastCurrentTurnBlock = block === lastCurrentTurnBlock
@@ -751,6 +752,9 @@ export const buildMessageRenderFlow = (params: {
     if (block.kind === 'run_final_text') return
 
     if (block.kind === 'thinking') {
+      block.autoCollapse = Boolean(
+        block.endedAt != null && normalizedBlocks.slice(index + 1).some(blockHasVisibleContent)
+      )
       block.isActive = Boolean(
         isRunActive && isCurrentTurnBlock && isLastCurrentTurnBlock && block.endedAt == null
       )

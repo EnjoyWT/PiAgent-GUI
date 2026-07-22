@@ -137,6 +137,7 @@ watch(
       <FlowThinkingBlock
         v-if="block.kind === 'thinking'"
         :block="block"
+        @widget-layout-change="emit('widget-layout-change')"
       />
 
       <FlowTextBlock

@@ -5,6 +5,9 @@ export type BottomScrollAnimation = {
   durationMs: number
 }
 
+export const shouldFollowLayoutChangeToBottom = (input: { isPinnedToBottom: boolean }): boolean =>
+  input.isPinnedToBottom
+
 export const getBottomScrollDuration = (distancePx: number): number => {
   const distance = Math.abs(distancePx)
   if (distance <= 0) return 0

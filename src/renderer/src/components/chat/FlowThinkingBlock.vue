@@ -11,6 +11,10 @@ const props = defineProps<{
   block: ThinkingBlock
 }>()
 
+const emit = defineEmits<{
+  (e: 'widget-layout-change'): void
+}>()
+
 const formatThinkingDuration = (durationMs: number): string => {
   if (durationMs < 1000) return `${Math.round(durationMs)} ms`
   const seconds = durationMs / 1000
@@ -57,26 +61,20 @@ const getThinkingStatusText = (): string =>
     ? '思考中'
     : `思考了 ${formatThinkingDuration(getThinkingDurationMs())}`
 
-const rootRef = ref<HTMLElement | null>(null)
-
 // 折叠/展开逻辑，初始化：如果已经结束了，默认折叠，未结束则展开
-const isExpanded = ref(props.block.endedAt == null)
+const isExpanded = ref(props.block.endedAt == null || !props.block.autoCollapse)
 
 // 折叠/展开逻辑
 const toggleThinking = (): void => {
   isExpanded.value = !isExpanded.value
 }
 
-// 思考结束时自动折叠 —— 先滚到底部再折叠，浏览器在 CSS 过渡期间
-// 自动将 scrollTop clamp 到递减的 scrollHeight，不会出现 UI 上滑。
+// 思考结束后，只有后面已经出现正文/工具等可见输出时才自动折叠。
+// 否则会在 runtime 事件空窗里把主消息流高度压短，让视图短暂露出用户消息附近。
 watch(
-  () => props.block.endedAt,
-  (endedAt, prevEndedAt) => {
-    if (prevEndedAt == null && endedAt != null) {
-      const chatEl = rootRef.value?.closest('.chat-flow-container')
-      if (chatEl) {
-        chatEl.scrollTop = chatEl.scrollHeight
-      }
+  () => [props.block.endedAt, props.block.autoCollapse] as const,
+  ([endedAt, autoCollapse]) => {
+    if (endedAt != null && autoCollapse) {
       isExpanded.value = false
     }
   }
@@ -90,7 +88,7 @@ setupAutoScroll(() => props.block.thinking)
 </script>
 
 <template>
-  <div ref="rootRef" class="w-fit max-w-full">
+  <div class="w-fit max-w-full">
     <button
       type="button"
       class="hover-expand-x inline-flex items-center gap-2 rounded-lg py-1 pr-2 text-(--theme-text-dim) transition-colors hover:bg-(--theme-bg-hover-btn) flex-nowrap whitespace-nowrap"
@@ -103,14 +101,14 @@ setupAutoScroll(() => props.block.thinking)
       >
         {{ getThinkingStatusText() }}
       </span>
-      <ChevronDown
-        v-if="isExpanded"
-        :size="14"
-        class="shrink-0 text-(--theme-text-dim)"
-      />
+      <ChevronDown v-if="isExpanded" :size="14" class="shrink-0 text-(--theme-text-dim)" />
       <ChevronRight v-else :size="14" class="shrink-0 text-(--theme-text-dim)" />
     </button>
-    <Transition name="flow-expand">
+    <Transition
+      name="flow-expand"
+      @after-enter="emit('widget-layout-change')"
+      @after-leave="emit('widget-layout-change')"
+    >
       <div v-if="isExpanded" class="flow-expand-shell">
         <div class="flow-expand-inner">
           <div
