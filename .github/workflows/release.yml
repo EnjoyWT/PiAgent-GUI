@@ -158,6 +158,11 @@ jobs:
               --latest
           fi
 
+          # Ensure re-runs against an existing draft publish it as a formal release.
+          gh release edit "${TAG}" \
+            --draft=false \
+            --latest
+
           # Upload all publishable artifacts.
           # Missing assets are tolerated (some may not exist for arm64-only builds).
           for pattern in dist/*.dmg dist/*.zip dist/*.blockmap dist/latest-mac.yml; do
