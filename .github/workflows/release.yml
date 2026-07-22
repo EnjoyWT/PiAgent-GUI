@@ -113,19 +113,16 @@ jobs:
             echo "Signing: DISABLED. Add CSC_LINK + CSC_KEY_PASSWORD in Actions secrets to sign."
           fi
 
-      - name: Build Mac app + publish to GitHub Releases
+      - name: Build Mac app
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SIGNING_MODE: ${{ steps.signing.outputs.mode }}
-          # Signing only. Do not pass Apple notarization secrets.
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         run: |
           set -euo pipefail
 
           if [[ "${SIGNING_MODE}" == "signed" ]]; then
-            # Developer ID Application cert (.p12) via CSC_LINK. No notarize.
             unset CSC_IDENTITY_AUTO_DISCOVERY || true
             echo "Mac signed build (notarize=false in electron-builder.yml)."
           else
@@ -137,10 +134,44 @@ jobs:
           pnpm run build:computer-use-helper
           pnpm exec electron-vite build
 
-          # Mac only. zip required by electron-updater; dmg for manual install.
-          pnpm exec electron-builder --mac --arm64 --x64 --publish always
+          # Build only (no publish). Release creation is a separate step below.
+          pnpm exec electron-builder --mac --arm64 --x64
 
-      - name: Upload build artifacts (fallback)
+      - name: Create GitHub Release & upload assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.tag }}"
+          echo "Creating release for ${TAG}…"
+
+          # Create or update the release. If a release already exists for this
+          # tag (e.g. after a re-run), upload to it; otherwise create a new one.
+          if gh release view "${TAG}" --json id &>/dev/null; then
+            echo "Release ${TAG} already exists — uploading assets…"
+          else
+            echo "Creating new release ${TAG}…"
+            gh release create "${TAG}" \
+              --title "${TAG}" \
+              --generate-notes \
+              --latest
+          fi
+
+          # Upload all publishable artifacts.
+          # Missing assets are tolerated (some may not exist for arm64-only builds).
+          for pattern in dist/*.dmg dist/*.zip dist/*.blockmap dist/latest-mac.yml; do
+            for f in $pattern; do
+              if [ -f "$f" ]; then
+                echo "Uploading: $f"
+                gh release upload "${TAG}" "$f" --clobber
+              fi
+            done
+          done
+
+          echo "Release ${TAG} published successfully."
+
+      - name: Upload build artifacts (workflow artifact fallback)
         if: always()
         uses: actions/upload-artifact@v4
         with:

@@ -1,9 +1,9 @@
 import { app, BrowserWindow, shell } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import type { ProgressInfo, UpdateInfo } from 'electron-updater'
-import { is } from '@electron-toolkit/utils'
 import {
   APP_UPDATE_RELEASE_PAGE_URL,
+  toUserFacingUpdateError,
   type AppUpdateCheckResult,
   type AppUpdatePhase,
   type AppUpdateProgress,
@@ -12,11 +12,6 @@ import {
 } from '../../shared/app-update.ts'
 
 const STATUS_CHANNEL = 'app-update:status'
-
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message || error.name
-  return String(error)
-}
 
 function normalizeReleaseNotes(notes: UpdateInfo['releaseNotes']): string | null {
   if (!notes) return null
@@ -114,7 +109,8 @@ class AppUpdaterService {
     })
 
     autoUpdater.on('error', (error) => {
-      this.setPhase('error', { error: toErrorMessage(error) })
+      console.error('[app-update] update failed:', error)
+      this.setPhase('error', { error: toUserFacingUpdateError(error) })
     })
   }
 
@@ -124,8 +120,9 @@ class AppUpdaterService {
       phase: this.phase,
       currentVersion: app.getVersion(),
       isPackaged: packaged,
-      // Mac-first release path. Windows/Linux can be enabled later with the same service.
-      supported: packaged && process.platform === 'darwin',
+      // Mac-first release path. Dev mode also checks updates (reads from dev-app-update.yml).
+      // Download/install are still gated behind isPackaged in the respective methods.
+      supported: process.platform === 'darwin',
       updateInfo: this.updateInfo,
       progress: this.progress,
       error: this.error,
@@ -180,7 +177,8 @@ class AppUpdaterService {
       try {
         autoUpdater.quitAndInstall()
       } catch (error) {
-        this.setPhase('error', { error: toErrorMessage(error) })
+        console.error('[app-update] install failed:', error)
+        this.setPhase('error', { error: toUserFacingUpdateError(error) })
       }
     })
 
@@ -195,14 +193,6 @@ class AppUpdaterService {
   }
 
   private async runCheck(): Promise<AppUpdateCheckResult> {
-    if (is.dev || !app.isPackaged) {
-      this.checkedAt = new Date().toISOString()
-      this.setPhase('error', {
-        error: '开发模式不检查更新。请使用打包后的 Mac 应用验证。'
-      })
-      return { status: this.getStatus(), updateAvailable: false }
-    }
-
     if (process.platform !== 'darwin') {
       this.checkedAt = new Date().toISOString()
       this.setPhase('error', {
@@ -236,7 +226,8 @@ class AppUpdaterService {
       }
     } catch (error) {
       this.checkedAt = new Date().toISOString()
-      this.setPhase('error', { error: toErrorMessage(error) })
+      console.error('[app-update] update check failed:', error)
+      this.setPhase('error', { error: toUserFacingUpdateError(error) })
       return { status: this.getStatus(), updateAvailable: false }
     }
   }
@@ -277,7 +268,8 @@ class AppUpdaterService {
       }
       return this.getStatus()
     } catch (error) {
-      this.setPhase('error', { error: toErrorMessage(error) })
+      console.error('[app-update] update download failed:', error)
+      this.setPhase('error', { error: toUserFacingUpdateError(error) })
       return this.getStatus()
     }
   }

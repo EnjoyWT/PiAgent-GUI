@@ -16,10 +16,7 @@
           <span class="text-(--theme-text-dim)">当前版本</span>
           <span class="font-semibold text-(--theme-text-main)">v{{ updateStatus.currentVersion }}</span>
         </div>
-        <div class="flex items-center justify-between gap-3">
-          <span class="text-(--theme-text-dim)">状态</span>
-          <span class="font-medium" :class="statusToneClass">{{ statusLabel }}</span>
-        </div>
+        <!-- 状态行已移除，更新结果通过弹窗反馈 -->
         <div
           v-if="latestVersionText"
           class="flex items-center justify-between gap-3"
@@ -108,12 +105,7 @@
         {{ resultHint }}
       </div>
 
-      <div
-        v-if="updateStatus.error"
-        class="text-xs font-medium text-red-500 leading-relaxed wrap-break-word"
-      >
-        {{ updateStatus.error }}
-      </div>
+
 
       <div
         v-if="updateStatus.updateInfo?.releaseNotes"
@@ -179,40 +171,6 @@ const checkButtonLabel = computed(() => {
   return `检查更新 · v${current}`
 })
 
-const statusLabel = computed(() => {
-  switch (updateStatus.phase) {
-    case 'checking':
-      return '正在检查…'
-    case 'not-available':
-      return '已是最新版本'
-    case 'available':
-      return `发现新版本 v${updateStatus.updateInfo?.version ?? ''}`
-    case 'downloading':
-      return '正在下载…'
-    case 'downloaded':
-      return `已下载 v${updateStatus.updateInfo?.version ?? ''}，可重启安装`
-    case 'error':
-      return '更新出错'
-    default:
-      return updateStatus.supported ? '未检查' : '仅打包版 macOS 支持应用内更新'
-  }
-})
-
-const statusToneClass = computed(() => {
-  switch (updateStatus.phase) {
-    case 'not-available':
-    case 'downloaded':
-      return 'text-emerald-600'
-    case 'available':
-    case 'downloading':
-      return 'text-amber-500'
-    case 'error':
-      return 'text-red-500'
-    default:
-      return 'text-(--theme-text-main)'
-  }
-})
-
 const resultHint = computed(() => {
   if (updateStatus.phase === 'available' && updateStatus.updateInfo?.version) {
     return `发现最新版本：v${updateStatus.updateInfo.version}`
@@ -272,24 +230,11 @@ const loadUpdateStatus = async () => {
   applyUpdateStatus(status)
 }
 
-const isDevModeUpdateMessage = (message: string | null | undefined): boolean => {
-  const text = String(message ?? '')
-  return text.includes('开发模式') || text.includes('请使用打包后')
-}
-
 const checkForUpdates = async () => {
   isChecking.value = true
   try {
     const result = await window.api.appUpdate.check()
     applyUpdateStatus(result.status)
-
-    if (isDevModeUpdateMessage(result.status.error)) {
-      await globalDialog.alert({
-        title: '无法检查更新',
-        message: result.status.error || '开发模式不检查更新。请使用打包后的 Mac 应用验证。'
-      })
-      return
-    }
 
     if (result.status.phase === 'error' && result.status.error) {
       await globalDialog.alert({
