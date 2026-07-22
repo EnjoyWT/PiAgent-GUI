@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { ChevronRight, ChevronDown } from 'lucide-vue-next'
 import WidgetContainer from './WidgetContainer.vue'
 import TransportSetupQrBlock from './TransportSetupQrBlock.vue'
@@ -65,6 +65,7 @@ const processedDurationMs = computed(() => {
 })
 
 const toggleIntermediateProcess = (): void => {
+  cancelIntermediateAutoCollapse()
   intermediateProcessUserToggled.value = true
   intermediateProcessCollapsed.value = !intermediateProcessCollapsed.value
 }
@@ -72,16 +73,56 @@ const toggleIntermediateProcess = (): void => {
 const isFinalAnswerBlock = (block: MessageRenderBlock): boolean =>
   block.id === finalAnswerBlockId.value
 
+let intermediateAutoCollapseToken = 0
+let intermediateAutoCollapseFrameId: number | null = null
+let intermediateAutoCollapseFrameResolve: ((painted: boolean) => void) | null = null
+
+const cancelIntermediateAutoCollapse = (): void => {
+  intermediateAutoCollapseToken += 1
+  if (intermediateAutoCollapseFrameId !== null) {
+    cancelAnimationFrame(intermediateAutoCollapseFrameId)
+    intermediateAutoCollapseFrameId = null
+  }
+  intermediateAutoCollapseFrameResolve?.(false)
+  intermediateAutoCollapseFrameResolve = null
+}
+
+const waitForNextPaint = (token: number): Promise<boolean> =>
+  new Promise((resolve) => {
+    intermediateAutoCollapseFrameResolve = resolve
+    const frameId = requestAnimationFrame(() => {
+      if (intermediateAutoCollapseFrameId === frameId) {
+        intermediateAutoCollapseFrameId = null
+      }
+      if (intermediateAutoCollapseFrameResolve === resolve) {
+        intermediateAutoCollapseFrameResolve = null
+      }
+      resolve(token === intermediateAutoCollapseToken)
+    })
+    intermediateAutoCollapseFrameId = frameId
+  })
+
+const scheduleIntermediateProcessAutoCollapse = async (blockId: string): Promise<void> => {
+  const token = ++intermediateAutoCollapseToken
+  await nextTick()
+  if (token !== intermediateAutoCollapseToken) return
+  if (!(await waitForNextPaint(token))) return
+  if (!(await waitForNextPaint(token))) return
+  if (finalAnswerBlockId.value !== blockId || intermediateProcessUserToggled.value) return
+  intermediateProcessCollapsed.value = true
+}
+
 watch(
   finalAnswerBlockId,
   (blockId, previousBlockId) => {
+    cancelIntermediateAutoCollapse()
     if (!blockId || blockId === previousBlockId || intermediateProcessUserToggled.value) return
-    intermediateProcessCollapsed.value = true
+    void scheduleIntermediateProcessAutoCollapse(blockId)
   },
-  { immediate: true }
+  { immediate: true, flush: 'post' }
 )
 
-// 当中间过程自动折叠时（最终回答出现），通知父组件滚动到底部
+// 等最终回答先完成一次绘制，再折叠中间过程，避免同一帧内替换文本和收起上方内容。
 watch(intermediateProcessCollapsed, (collapsed) => {
   if (collapsed && !intermediateProcessUserToggled.value) {
     emit('widget-layout-change')
@@ -111,6 +152,10 @@ watch(
   },
   { flush: 'post' }
 )
+
+onBeforeUnmount(() => {
+  cancelIntermediateAutoCollapse()
+})
 </script>
 
 <template>
