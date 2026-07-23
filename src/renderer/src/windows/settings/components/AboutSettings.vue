@@ -39,12 +39,7 @@
           :disabled="primaryControl.disabled"
           @click="handlePrimaryUpdateAction"
         >
-          <component
-            :is="primaryIcon"
-            :size="16"
-            class="shrink-0"
-            :class="updateStatus.phase === 'checking' ? 'animate-spin' : ''"
-          />
+          <component :is="primaryIcon" :size="16" class="shrink-0" :class="primaryIconClass" />
           <span class="relative z-1">{{ primaryControl.label }}</span>
           <span
             v-if="primaryControl.progressPercent !== null"
@@ -76,10 +71,10 @@
       </div>
 
       <div
-        v-if="updateStatus.updateInfo?.releaseNotes"
+        v-if="releaseNotesText"
         class="rounded-xl border border-(--theme-border-base) bg-(--theme-bg-sidebar) p-3 text-xs text-(--theme-text-dim) whitespace-pre-wrap max-h-36 overflow-y-auto"
       >
-        {{ updateStatus.updateInfo.releaseNotes }}
+        {{ releaseNotesText }}
       </div>
     </div>
 
@@ -148,6 +143,8 @@ import { CircleArrowUp, Download, ExternalLink, RefreshCw } from 'lucide-vue-nex
 import BaseDialog from '@renderer/components/common/BaseDialog.vue'
 import {
   buildAppUpdatePrimaryControl,
+  formatAppUpdateReleaseNotesForDisplay,
+  toUserFacingUpdateError,
   type AppUpdatePrimaryAction,
   type AppUpdateStatus
 } from '@shared/app-update'
@@ -172,11 +169,21 @@ let stopStatusListener: (() => void) | null = null
 const primaryControl = computed(() => buildAppUpdatePrimaryControl(updateStatus))
 
 const primaryIcon = computed(() => {
+  if (updateStatus.phase === 'downloading') return Download
+  if (updateStatus.phase === 'installing') return RefreshCw
   if (primaryControl.value.action === 'download') return Download
   if (primaryControl.value.action === 'install') return CircleArrowUp
   if (primaryControl.value.action === 'open-release') return ExternalLink
   return RefreshCw
 })
+
+const primaryIconClass = computed(() =>
+  updateStatus.phase === 'checking' ||
+  updateStatus.phase === 'downloading' ||
+  updateStatus.phase === 'installing'
+    ? 'animate-spin'
+    : ''
+)
 
 const latestVersionText = computed(() => {
   const version = updateStatus.updateInfo?.version
@@ -185,7 +192,8 @@ const latestVersionText = computed(() => {
   if (
     updateStatus.phase === 'available' ||
     updateStatus.phase === 'downloading' ||
-    updateStatus.phase === 'downloaded'
+    updateStatus.phase === 'downloaded' ||
+    updateStatus.phase === 'installing'
   ) {
     return `v${version}`
   }
@@ -196,7 +204,8 @@ const primaryButtonClass = computed(() => {
   if (
     primaryControl.value.action === 'download' ||
     primaryControl.value.action === 'install' ||
-    updateStatus.phase === 'downloading'
+    updateStatus.phase === 'downloading' ||
+    updateStatus.phase === 'installing'
   ) {
     return 'bg-[#00ba88] text-white hover:opacity-90'
   }
@@ -213,6 +222,9 @@ const resultHint = computed(() => {
   if (updateStatus.phase === 'downloading') {
     return '正在后台下载更新，关闭这个页面不会中断。'
   }
+  if (updateStatus.phase === 'installing') {
+    return '正在重启应用并安装更新，请稍候。'
+  }
   if (updateStatus.phase === 'not-available' && updateStatus.updateInfo?.version) {
     return `当前已是最新版本：v${updateStatus.updateInfo.version}`
   }
@@ -228,7 +240,11 @@ const resultHint = computed(() => {
 const resultHintClass = computed(() => {
   if (updateStatus.phase === 'error') return 'text-rose-500'
   if (updateStatus.phase === 'available') return 'text-amber-500'
-  if (updateStatus.phase === 'not-available' || updateStatus.phase === 'downloaded') {
+  if (
+    updateStatus.phase === 'not-available' ||
+    updateStatus.phase === 'downloaded' ||
+    updateStatus.phase === 'installing'
+  ) {
     return 'text-emerald-600'
   }
   return 'text-(--theme-text-main)'
@@ -240,6 +256,10 @@ const downloadDetailText = computed(() => {
   if (updateStatus.progress.total <= 0) return `已下载 ${percent}%`
   return `已下载 ${percent}% · ${formatBytes(updateStatus.progress.transferred)} / ${formatBytes(updateStatus.progress.total)}`
 })
+
+const releaseNotesText = computed(() =>
+  formatAppUpdateReleaseNotesForDisplay(updateStatus.updateInfo?.releaseNotes)
+)
 
 const updatePromptControl = computed(() =>
   promptedUpdateStatus.value ? buildAppUpdatePrimaryControl(promptedUpdateStatus.value) : null
@@ -253,8 +273,8 @@ const updatePromptVersion = computed(
   () => promptedUpdateStatus.value?.updateInfo?.version ?? updateStatus.updateInfo?.version ?? '—'
 )
 
-const updatePromptReleaseNotes = computed(
-  () => promptedUpdateStatus.value?.updateInfo?.releaseNotes ?? ''
+const updatePromptReleaseNotes = computed(() =>
+  formatAppUpdateReleaseNotesForDisplay(promptedUpdateStatus.value?.updateInfo?.releaseNotes)
 )
 
 const updatePromptTitle = computed(() =>
@@ -376,17 +396,25 @@ const runDownloadUpdate = async (): Promise<void> => {
     applyUpdateStatus(status)
   } catch (error) {
     updateStatus.phase = 'error'
-    updateStatus.error = error instanceof Error ? error.message : String(error)
+    updateStatus.error = toUserFacingUpdateError(error, 'download')
   }
 }
 
 const quitAndInstall = async () => {
+  updateStatus.phase = 'installing'
+  updateStatus.error = null
+  updateStatus.progress = {
+    percent: 100,
+    bytesPerSecond: 0,
+    transferred: updateStatus.progress?.total ?? 0,
+    total: updateStatus.progress?.total ?? 0
+  }
   try {
     const status = await window.api.appUpdate.quitAndInstall()
     applyUpdateStatus(status)
   } catch (error) {
     updateStatus.phase = 'error'
-    updateStatus.error = error instanceof Error ? error.message : String(error)
+    updateStatus.error = toUserFacingUpdateError(error, 'install')
   }
 }
 

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import {
   buildAppUpdatePrimaryControl,
   buildAppUpdateSidebarBadge,
+  formatAppUpdateReleaseNotesForDisplay,
   type AppUpdateStatus
 } from '../../../src/shared/app-update.ts'
 
@@ -79,6 +80,57 @@ test('primary update control installs downloaded updates', () => {
 
   assert.equal(control.action, 'install')
   assert.equal(control.label, '重启安装')
+  assert.equal(control.disabled, false)
+  assert.equal(control.progressPercent, 100)
+})
+
+test('primary update control disables while restart install is in progress', () => {
+  const control = buildAppUpdatePrimaryControl(
+    status({
+      phase: 'installing',
+      updateInfo: {
+        version: '1.2.3',
+        releaseName: null,
+        releaseNotes: null,
+        releaseDate: null
+      },
+      progress: {
+        percent: 100,
+        bytesPerSecond: 0,
+        transferred: 1000,
+        total: 1000
+      }
+    })
+  )
+
+  assert.equal(control.action, 'none')
+  assert.equal(control.label, '正在重启安装…')
+  assert.equal(control.disabled, true)
+  assert.equal(control.progressPercent, 100)
+})
+
+test('primary update control retries install after installer launch failure keeps the package', () => {
+  const control = buildAppUpdatePrimaryControl(
+    status({
+      phase: 'error',
+      error: '安装更新时发生错误',
+      updateInfo: {
+        version: '1.2.3',
+        releaseName: null,
+        releaseNotes: null,
+        releaseDate: null
+      },
+      progress: {
+        percent: 100,
+        bytesPerSecond: 0,
+        transferred: 1000,
+        total: 1000
+      }
+    })
+  )
+
+  assert.equal(control.action, 'install')
+  assert.equal(control.label, '重试安装')
   assert.equal(control.disabled, false)
   assert.equal(control.progressPercent, 100)
 })
@@ -166,5 +218,26 @@ test('sidebar update badge reflects resumable global updater states', () => {
     progressPercent: 100
   })
 
+  assert.deepEqual(buildAppUpdateSidebarBadge(status({ phase: 'installing' })), {
+    label: '重启中',
+    tone: 'downloaded',
+    progressPercent: 100
+  })
+
   assert.equal(buildAppUpdateSidebarBadge(status({ phase: 'not-available' })), null)
+})
+
+test('release notes formatter converts GitHub HTML changelog to readable text', () => {
+  const raw =
+    '<p><strong>Full Changelog</strong>: <a class="commit-link" href="https://github.com/EnjoyWT/PiAgent-GUI/compare/v0.0.3...v0.0.4"><tt>v0.0.3...v0.0.4</tt></a></p>'
+
+  assert.equal(formatAppUpdateReleaseNotesForDisplay(raw), 'Full Changelog: v0.0.3...v0.0.4')
+})
+
+test('release notes formatter keeps plain text and decodes HTML lists', () => {
+  assert.equal(formatAppUpdateReleaseNotesForDisplay('修复更新下载流程'), '修复更新下载流程')
+  assert.equal(
+    formatAppUpdateReleaseNotesForDisplay('<ul><li>Fix download &amp; install</li></ul>'),
+    '- Fix download & install'
+  )
 })

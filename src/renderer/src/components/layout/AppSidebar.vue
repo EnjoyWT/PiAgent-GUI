@@ -237,7 +237,7 @@
           aria-label="打开更新设置"
           @click="emit('openUpdateSettings')"
         >
-          <CircleArrowUp :size="16" class="mr-1.5 opacity-80" />
+          <component :is="updateBadgeIcon" :size="16" class="mr-1.5 opacity-80" />
           <span>{{ props.updateBadge.label }}</span>
           <span
             v-if="props.updateBadge.progressPercent !== null"
@@ -264,6 +264,7 @@ import {
   Settings as SettingsIcon,
   MoreHorizontal,
   CircleArrowUp,
+  Download,
   Trash2,
   FolderClosed,
   FolderOpen,
@@ -398,6 +399,11 @@ const updateBadgeClass = computed(() => {
     return 'bg-rose-500/10 text-rose-500 hover:bg-rose-500/18'
   }
   return 'bg-(--theme-accent)/10 text-(--theme-accent) hover:bg-(--theme-accent)/20'
+})
+
+const updateBadgeIcon = computed(() => {
+  if (!props.updateBadge) return CircleArrowUp
+  return props.updateBadge.tone === 'downloading' ? Download : CircleArrowUp
 })
 
 const onCreateThreadInWorkspace = (workspacePath: string): void => {

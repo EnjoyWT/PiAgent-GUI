@@ -3,6 +3,7 @@ import { autoUpdater } from 'electron-updater'
 import type { ProgressInfo, UpdateInfo } from 'electron-updater'
 import {
   APP_UPDATE_RELEASE_PAGE_URL,
+  formatAppUpdateReleaseNotesForDisplay,
   toUserFacingUpdateError,
   type AppUpdateCheckResult,
   type AppUpdatePhase,
@@ -15,7 +16,7 @@ const STATUS_CHANNEL = 'app-update:status'
 
 function normalizeReleaseNotes(notes: UpdateInfo['releaseNotes']): string | null {
   if (!notes) return null
-  if (typeof notes === 'string') return notes.trim() || null
+  if (typeof notes === 'string') return formatAppUpdateReleaseNotesForDisplay(notes) || null
   if (Array.isArray(notes)) {
     const text = notes
       .map((item) => {
@@ -25,7 +26,7 @@ function normalizeReleaseNotes(notes: UpdateInfo['releaseNotes']): string | null
       })
       .filter(Boolean)
       .join('\n')
-    return text || null
+    return formatAppUpdateReleaseNotesForDisplay(text) || null
   }
   return null
 }
@@ -110,7 +111,13 @@ class AppUpdaterService {
 
     autoUpdater.on('error', (error) => {
       console.error('[app-update] update failed:', error)
-      this.setPhase('error', { error: toUserFacingUpdateError(error) })
+      const context =
+        this.phase === 'installing'
+          ? 'install'
+          : this.phase === 'downloading'
+            ? 'download'
+            : 'check'
+      this.setPhase('error', { error: toUserFacingUpdateError(error, context) })
     })
   }
 
@@ -160,6 +167,8 @@ class AppUpdaterService {
   quitAndInstall(): AppUpdateStatus {
     this.init()
 
+    if (this.phase === 'installing') return this.getStatus()
+
     if (!app.isPackaged || process.platform !== 'darwin') {
       this.setPhase('error', {
         error: '当前环境不支持应用内安装更新，请从 GitHub Release 手动下载。'
@@ -172,13 +181,21 @@ class AppUpdaterService {
       return this.getStatus()
     }
 
+    this.progress = {
+      percent: 100,
+      bytesPerSecond: 0,
+      transferred: this.progress?.total ?? 0,
+      total: this.progress?.total ?? 0
+    }
+    this.setPhase('installing', { error: null })
+
     // Mac without notarization may still prompt Gatekeeper after install.
     setImmediate(() => {
       try {
         autoUpdater.quitAndInstall()
       } catch (error) {
         console.error('[app-update] install failed:', error)
-        this.setPhase('error', { error: toUserFacingUpdateError(error) })
+        this.setPhase('error', { error: toUserFacingUpdateError(error, 'install') })
       }
     })
 
@@ -193,6 +210,17 @@ class AppUpdaterService {
   }
 
   private async runCheck(): Promise<AppUpdateCheckResult> {
+    if (
+      this.phase === 'downloading' ||
+      this.phase === 'downloaded' ||
+      this.phase === 'installing'
+    ) {
+      return {
+        status: this.getStatus(),
+        updateAvailable: true
+      }
+    }
+
     if (process.platform !== 'darwin') {
       this.checkedAt = new Date().toISOString()
       this.setPhase('error', {
@@ -220,19 +248,23 @@ class AppUpdaterService {
         }
       }
 
+      const status = this.getStatus()
       return {
-        status: this.getStatus(),
-        updateAvailable: this.phase === 'available' || this.phase === 'downloaded'
+        status,
+        updateAvailable: status.phase === 'available' || status.phase === 'downloaded'
       }
     } catch (error) {
       this.checkedAt = new Date().toISOString()
       console.error('[app-update] update check failed:', error)
-      this.setPhase('error', { error: toUserFacingUpdateError(error) })
+      this.setPhase('error', { error: toUserFacingUpdateError(error, 'check') })
       return { status: this.getStatus(), updateAvailable: false }
     }
   }
 
   private async runDownload(): Promise<AppUpdateStatus> {
+    if (this.phase === 'installing') return this.getStatus()
+    if (this.phase === 'downloaded') return this.getStatus()
+
     if (!app.isPackaged || process.platform !== 'darwin') {
       this.setPhase('error', {
         error: '当前环境不支持应用内下载更新，请打开 GitHub Release 手动下载。'
@@ -246,10 +278,6 @@ class AppUpdaterService {
         this.setPhase('error', { error: '没有可下载的更新，请先检查更新。' })
         return this.getStatus()
       }
-    }
-
-    if (this.phase === 'downloaded') {
-      return this.getStatus()
     }
 
     this.error = null
@@ -269,7 +297,7 @@ class AppUpdaterService {
       return this.getStatus()
     } catch (error) {
       console.error('[app-update] update download failed:', error)
-      this.setPhase('error', { error: toUserFacingUpdateError(error) })
+      this.setPhase('error', { error: toUserFacingUpdateError(error, 'download') })
       return this.getStatus()
     }
   }

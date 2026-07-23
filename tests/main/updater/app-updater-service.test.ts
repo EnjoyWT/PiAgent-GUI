@@ -33,6 +33,12 @@ test('toUserFacingUpdateError returns default for unknown errors', () => {
   assert.equal(result, '检查更新时发生错误，请稍后重试，或前往 GitHub Release 手动下载。')
 })
 
+test('toUserFacingUpdateError returns install-specific default for installer errors', () => {
+  const err = new Error('quitAndInstall failed')
+  const result = toUserFacingUpdateError(err, 'install')
+  assert.equal(result, '安装更新时发生错误，请重新尝试，或前往 GitHub Release 手动下载。')
+})
+
 test('toUserFacingUpdateError handles non-Error input', () => {
   const result = toUserFacingUpdateError(null)
   assert.equal(result, '检查更新时发生错误，请稍后重试，或前往 GitHub Release 手动下载。')

@@ -1,5 +1,12 @@
 export type AppUpdatePhase =
-  'idle' | 'checking' | 'not-available' | 'available' | 'downloading' | 'downloaded' | 'error'
+  | 'idle'
+  | 'checking'
+  | 'not-available'
+  | 'available'
+  | 'downloading'
+  | 'downloaded'
+  | 'installing'
+  | 'error'
 
 export interface AppUpdateVersionInfo {
   version: string
@@ -49,6 +56,8 @@ export interface AppUpdateSidebarBadge {
   progressPercent: number | null
 }
 
+export type AppUpdateErrorContext = 'check' | 'download' | 'install'
+
 export const APP_UPDATE_RELEASE_OWNER = 'EnjoyWT'
 export const APP_UPDATE_RELEASE_REPO = 'PiAgent-GUI'
 export const APP_UPDATE_RELEASE_PAGE_URL = `https://github.com/${APP_UPDATE_RELEASE_OWNER}/${APP_UPDATE_RELEASE_REPO}/releases`
@@ -87,6 +96,15 @@ export function buildAppUpdatePrimaryControl(status: AppUpdateStatus): AppUpdate
     }
   }
 
+  if (status.phase === 'installing') {
+    return {
+      action: 'none',
+      label: '正在重启安装…',
+      disabled: true,
+      progressPercent: 100
+    }
+  }
+
   if (status.phase === 'downloaded') {
     return {
       action: canUseInAppUpdate(status) ? 'install' : 'open-release',
@@ -114,6 +132,18 @@ export function buildAppUpdatePrimaryControl(status: AppUpdateStatus): AppUpdate
   }
 
   if (status.phase === 'error') {
+    if (
+      version &&
+      canUseInAppUpdate(status) &&
+      clampAppUpdateProgressPercent(status.progress?.percent) >= 100
+    ) {
+      return {
+        action: 'install',
+        label: '重试安装',
+        disabled: false,
+        progressPercent: 100
+      }
+    }
     if (version && canUseInAppUpdate(status)) {
       return {
         action: 'download',
@@ -160,6 +190,14 @@ export function buildAppUpdateSidebarBadge(
     }
   }
 
+  if (status.phase === 'installing') {
+    return {
+      label: '重启中',
+      tone: 'downloaded',
+      progressPercent: 100
+    }
+  }
+
   if (status.phase === 'downloaded') {
     return {
       label: '可安装',
@@ -179,11 +217,62 @@ export function buildAppUpdateSidebarBadge(
   return null
 }
 
+const releaseNotesHtmlTagPattern =
+  /<\/?(?:a|b|blockquote|br|code|div|em|h[1-6]|i|li|ol|p|pre|span|strong|tt|ul)(?:\s|>|\/)/i
+
+const decodeHtmlEntities = (value: string): string =>
+  value
+    .replace(/&#x([0-9a-f]+);/gi, (_match, hex: string) => {
+      const codePoint = Number.parseInt(hex, 16)
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : ''
+    })
+    .replace(/&#(\d+);/g, (_match, decimal: string) => {
+      const codePoint = Number.parseInt(decimal, 10)
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : ''
+    })
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+
+const normalizeReleaseNotesText = (value: string): string =>
+  value
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+/g, ' ').trim())
+    .filter(Boolean)
+    .join('\n')
+
+export function formatAppUpdateReleaseNotesForDisplay(notes: string | null | undefined): string {
+  const raw = String(notes ?? '').trim()
+  if (!raw) return ''
+
+  if (!releaseNotesHtmlTagPattern.test(raw)) {
+    return normalizeReleaseNotesText(decodeHtmlEntities(raw))
+  }
+
+  const text = raw
+    .replace(/\r\n?/g, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<li\b[^>]*>/gi, '- ')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<\/(?:p|div|h[1-6]|blockquote|pre|ul|ol)>/gi, '\n')
+    .replace(/<\/?(?:a|b|code|em|i|span|strong|tt)\b[^>]*>/gi, '')
+    .replace(/<[^>]+>/g, '')
+
+  return normalizeReleaseNotesText(decodeHtmlEntities(text))
+}
+
 /**
  * Convert raw update errors to user-friendly Chinese messages.
  * Pure function, no Electron dependency.
  */
-export function toUserFacingUpdateError(error: unknown): string {
+export function toUserFacingUpdateError(
+  error: unknown,
+  context: AppUpdateErrorContext = 'check'
+): string {
   const rawMessage = error instanceof Error ? error.message || error.name : String(error)
   const message = rawMessage.toLowerCase()
 
@@ -200,6 +289,13 @@ export function toUserFacingUpdateError(error: unknown): string {
     message.includes('etimedout')
   ) {
     return '无法连接更新服务，请检查网络后重试。'
+  }
+
+  if (context === 'download') {
+    return '下载更新时发生错误，请稍后重试，或前往 GitHub Release 手动下载。'
+  }
+  if (context === 'install') {
+    return '安装更新时发生错误，请重新尝试，或前往 GitHub Release 手动下载。'
   }
 
   return '检查更新时发生错误，请稍后重试，或前往 GitHub Release 手动下载。'
