@@ -699,7 +699,6 @@ const syncAssistantTurnMessage = (
   if (!assistant) return null
   assistant.run = run ?? undefined
   assistant.agentRunId = run?.id
-  assistant.agentTurnId = turn?.id
   assistant.content = getAssistantDisplayContentForTurn(run, turn)
   assistant.isPending = Boolean(
     run?.status === 'running' &&

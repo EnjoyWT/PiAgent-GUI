@@ -50,11 +50,13 @@ import {
 } from '../core-v2/system-followup-synthetic-prompt.ts'
 import { createPiAgentShellCommandPrefix } from '../cli/cli-bin-path.ts'
 import {
+  getProvider,
   getProviderApiKeyByRuntimeProvider,
   getProviderByRuntimeProvider,
   getSetting,
   listProviderModels
 } from '../db/config-db.ts'
+import { GuiCredentialStore } from '../provider-config/gui-credential-store.ts'
 import type { ContextHostService } from '../context/context-host-service.ts'
 import type { PromptBudgetService } from '../context/prompt-budget-service.ts'
 import { DeliveryCoordinator } from '../delivery/delivery-coordinator.ts'
@@ -68,7 +70,7 @@ import {
   InjectionRenderer,
   KnowledgeInjectionService
 } from '../knowledge/knowledge-injection-service.ts'
-import { getDefaultSkillsDir, getPreferredAppConfigDir } from '../paths.ts'
+import { getDefaultSkillsDir, getPiMonoAgentDir, getPreferredAppConfigDir } from '../paths.ts'
 import {
   resolveAgentPluginResources,
   type ResolvedAgentPluginResources
@@ -461,19 +463,10 @@ export class CodingAgentRuntimeBridge {
   private dispatchPendingDeliveries?: () => Promise<void>
   private readonly interactionController: RuntimeUserInteractionController
   private readonly appConfigDir = getPreferredAppConfigDir()
-  private readonly agentDir = path.join(this.appConfigDir, 'agent')
+  /** App-owned dir for ModelRuntime auth/models; not shared with pi CLI. */
+  private readonly appAgentDir = path.join(this.appConfigDir, 'agent')
   private modelRuntime: ModelRuntime | null = null
   private modelRuntimeInit: Promise<ModelRuntime> | null = null
-  private readonly settingsManager = SettingsManager.inMemory({
-    retry: {
-      enabled: true,
-      maxRetries: 5,
-      baseDelayMs: 1000,
-      provider: {
-        maxRetryDelayMs: 30000
-      }
-    }
-  })
   private readonly sessionsByConversationId = new Map<string, HeadlessRuntimeSession>()
   private readonly abortRequestedConversationIds = new Set<string>()
   private readonly providerGenerationById = new Map<string, number>()
@@ -509,10 +502,11 @@ export class CodingAgentRuntimeBridge {
   private async ensureModelRuntime(): Promise<ModelRuntime> {
     if (this.modelRuntime) return this.modelRuntime
     if (!this.modelRuntimeInit) {
-      ensureDirectory(this.agentDir)
+      ensureDirectory(this.appAgentDir)
+      // Auth comes from GUI config.db via CredentialStore — not pi auth.json.
       this.modelRuntimeInit = ModelRuntime.create({
-        authPath: path.join(this.agentDir, 'auth.json'),
-        modelsPath: path.join(this.agentDir, 'models.json'),
+        credentials: new GuiCredentialStore(),
+        modelsPath: path.join(this.appAgentDir, 'models.json'),
         allowModelNetwork: false
       }).then((runtime) => {
         this.modelRuntime = runtime
@@ -520,6 +514,49 @@ export class CodingAgentRuntimeBridge {
       })
     }
     return this.modelRuntimeInit
+  }
+
+  private getPiAgentDir(): string {
+    return getPiMonoAgentDir()
+  }
+
+  /**
+   * File-backed pi-mono settings for resource discovery only
+   * (global ~/.pi/agent + project .pi/settings.json, packages with correct install scopes).
+   */
+  private createDiscoverySettingsManager(workspacePath: string): SettingsManager {
+    return SettingsManager.create(path.resolve(workspacePath), this.getPiAgentDir(), {
+      projectTrusted: true
+    })
+  }
+
+  /**
+   * In-memory session settings cloned from disk. Session mutations (model/thinking/shell)
+   * must never write back to the user's pi config.
+   */
+  private createSessionSettingsManager(discoverySettings: SettingsManager): SettingsManager {
+    const settingsManager = SettingsManager.inMemory(
+      {
+        ...structuredClone(discoverySettings.getGlobalSettings()),
+        ...structuredClone(discoverySettings.getProjectSettings())
+      },
+      { projectTrusted: true }
+    )
+    settingsManager.applyOverrides({
+      retry: {
+        enabled: true,
+        maxRetries: 5,
+        baseDelayMs: 1000,
+        provider: {
+          maxRetryDelayMs: 30000
+        }
+      },
+      shellCommandPrefix: createPiAgentShellCommandPrefix({
+        endpoint: LOCAL_HTTP_BASE_URL,
+        nodeExecutable: process.execPath
+      })
+    })
+    return settingsManager
   }
 
   async start(run: AgentRun): Promise<void> {
@@ -693,12 +730,33 @@ export class CodingAgentRuntimeBridge {
     const normalizedProviderId = String(providerId ?? '').trim()
     if (!normalizedProviderId) return { success: true, affectedConversationIds: [] }
 
-    const nextGeneration = this.getProviderGeneration(normalizedProviderId) + 1
-    this.providerGenerationById.set(normalizedProviderId, nextGeneration)
+    const guiProvider = getProvider(normalizedProviderId)
+    const runtimeProviderId = String(
+      guiProvider?.runtimeProvider ?? normalizedProviderId
+    ).trim()
+
+    const nextGeneration = this.getProviderGeneration(runtimeProviderId) + 1
+    this.providerGenerationById.set(runtimeProviderId, nextGeneration)
+    if (normalizedProviderId !== runtimeProviderId) {
+      this.providerGenerationById.set(normalizedProviderId, nextGeneration)
+    }
+
+    // Drop any leftover process-local overrides so the next resolve re-reads GUI store.
+    if (this.modelRuntime) {
+      await this.modelRuntime.removeRuntimeApiKey(runtimeProviderId)
+    } else if (this.modelRuntimeInit) {
+      const runtime = await this.modelRuntimeInit
+      await runtime.removeRuntimeApiKey(runtimeProviderId)
+    }
 
     const affectedConversationIds: string[] = []
     for (const runtime of this.sessionsByConversationId.values()) {
-      if (runtime.providerId !== normalizedProviderId) continue
+      if (
+        runtime.providerId !== runtimeProviderId &&
+        runtime.providerId !== normalizedProviderId
+      ) {
+        continue
+      }
       affectedConversationIds.push(runtime.conversationId)
       runtime.reloadPending = true
     }
@@ -1115,14 +1173,16 @@ export class CodingAgentRuntimeBridge {
 
     const modelDef = await this.resolveModel(policy)
     const parentRuntimeModel = await this.buildWorkerRuntimeModelConfig(policy, modelDef)
+    const discoverySettings = this.createDiscoverySettingsManager(workspacePath)
+    const sessionSettings = this.createSessionSettingsManager(discoverySettings)
     const loader = await this.createResourceLoader(
       workspacePath,
       interactionThreadId,
       surface,
       conversation.id,
-      agentPluginResources
+      agentPluginResources,
+      discoverySettings
     )
-    this.applyShellPrefix()
     const runtimeSurfaceContext = {
       conversationId: conversation.id,
       interactionThreadId,
@@ -1235,11 +1295,11 @@ export class CodingAgentRuntimeBridge {
     const modelRuntime = await this.ensureModelRuntime()
     const result = await createAgentSession({
       cwd: workspacePath,
-      agentDir: this.agentDir,
+      agentDir: this.getPiAgentDir(),
       model: modelDef,
       thinkingLevel: policy.model.reasoningLevel as any,
       modelRuntime,
-      settingsManager: this.settingsManager,
+      settingsManager: sessionSettings,
       resourceLoader: loader,
       sessionManager: SessionManager.inMemory(workspacePath),
       customTools,
@@ -1743,8 +1803,11 @@ export class CodingAgentRuntimeBridge {
       skillPaths: [],
       extensionPaths: [],
       extensionFactories: []
-    }
+    },
+    settingsManager?: SettingsManager
   ): Promise<DefaultResourceLoader> {
+    const resolvedSettingsManager =
+      settingsManager ?? this.createDiscoverySettingsManager(workspacePath)
     const disabledRaw = getSetting(skillsDisabledKey())
     const disabledSet = new Set<string>()
     if (disabledRaw) {
@@ -1814,11 +1877,12 @@ export class CodingAgentRuntimeBridge {
 
     const loader = new DefaultResourceLoader({
       cwd: workspacePath,
-      agentDir: this.agentDir,
-      settingsManager: this.settingsManager,
+      agentDir: this.getPiAgentDir(),
+      settingsManager: resolvedSettingsManager,
       additionalExtensionPaths: agentPluginResources.extensionPaths,
       extensionFactories: agentPluginResources.extensionFactories,
-      noSkills: true,
+      // Allow pi-mono global/project/package skills; still inject PiAgent managed skill paths.
+      noSkills: false,
       additionalSkillPaths: (() => {
         const managedGlobalDir = getDefaultSkillsDir()
         ensureSkillsDir(managedGlobalDir)
@@ -1859,10 +1923,9 @@ export class CodingAgentRuntimeBridge {
     const modelRuntime = await this.ensureModelRuntime()
     const providerId = policy.model.providerId
     const modelId = policy.model.modelId
+    // Auth is resolved by ModelRuntime through GuiCredentialStore (config.db).
+    // Keep a local read only for registerProvider composition / presence checks.
     const apiKey = getProviderApiKeyByRuntimeProvider(providerId)
-    if (apiKey) {
-      await modelRuntime.setRuntimeApiKey(providerId, apiKey)
-    }
 
     const providerInfo = getProviderByRuntimeProvider(providerId)
     const defaultProvider = providerInfo ? getDefaultProviderDefinition(providerInfo.id) : null
@@ -2037,15 +2100,6 @@ export class CodingAgentRuntimeBridge {
         ]
       }
     }
-  }
-
-  private applyShellPrefix(): void {
-    this.settingsManager.setShellCommandPrefix(
-      createPiAgentShellCommandPrefix({
-        endpoint: LOCAL_HTTP_BASE_URL,
-        nodeExecutable: process.execPath
-      })
-    )
   }
 
   private persistRuntimeEvents(conversationId: string, rows: ConversationEventRow[]): void {

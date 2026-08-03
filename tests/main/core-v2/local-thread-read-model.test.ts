@@ -666,7 +666,7 @@ test('local thread runtime events can be listed from core-v2 mirror', () => {
   assert.match(runtimeEvents[0]?.payload_json ?? '', /endTurn/)
 })
 
-test('latest window recovers empty running assistant turn from live snapshot', () => {
+test('latest window recovers one run-level assistant shell from a live snapshot', () => {
   const { core, thread, userMessage, assistantMessage } = seedThread()
   const page = buildLocalThreadWindowFromService(
     core,
@@ -713,7 +713,7 @@ test('latest window recovers empty running assistant turn from live snapshot', (
     {
       role: 'assistant',
       agentRunId: 'run-live',
-      agentTurnId: 'turn-live',
+      agentTurnId: null,
       content: '',
       isPending: true
     }

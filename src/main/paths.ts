@@ -1,5 +1,6 @@
 import os from 'node:os'
 import path from 'node:path'
+import { getAgentDir as getPiCodingAgentDir } from '@earendil-works/pi-coding-agent'
 
 const APP_DIRNAME = 'piagent'
 
@@ -31,9 +32,16 @@ export const getDefaultPluginDataDir = (): string =>
 
 export const getDefaultSharedSkillsDir = (): string => path.join(os.homedir(), '.agents', 'skills')
 
+/** PiAgent app-owned agent dir (auth/models for GUI ModelRuntime). */
 export const getDefaultAgentDir = (): string => path.join(getDefaultAppConfigDir(), 'agent')
 
 export const getLegacyAgentDir = (): string => path.join(getLegacyAppConfigDir(), 'agent')
+
+/**
+ * pi-mono coding-agent config dir (default ~/.pi/agent, overridable via PI_CODING_AGENT_DIR).
+ * Used for SettingsManager, DefaultResourceLoader, and createAgentSession resource discovery.
+ */
+export const getPiMonoAgentDir = (): string => getPiCodingAgentDir()
 
 export const getPreferredAppConfigDir = (): string => {
   // This app only uses the XDG config location.

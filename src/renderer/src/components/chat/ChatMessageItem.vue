@@ -85,8 +85,11 @@ const useAssistantRunFlow = computed(
 )
 const isAssistantRunFlowOwner = computed(() => {
   if (!useAssistantRunFlow.value || !props.run) return false
-  if (!props.agentTurnId) return props.run.turns.length <= 1
-  return props.run.turns.at(-1)?.id === props.agentTurnId
+  // Live runs use a stable run-level container without an agentTurnId.  After
+  // hydration, legacy turn-level rows still collapse into the first turn so a
+  // new turn can never unmount the currently visible flow.
+  if (!props.agentTurnId) return true
+  return props.run.turns[0]?.id === props.agentTurnId
 })
 const useAssistantPendingShell = computed(
   () => props.role === 'assistant' && Boolean(props.isPending) && !props.run

@@ -306,7 +306,7 @@ export const createRuntimeEventBridge = (options: RuntimeEventBridgeOptions) => 
       const turn = getRunTurnById(run, event.agentTurnId)
       const assistant = options.syncAssistantTurnMessage(targetMessages, run, turn, true)
       if (assistant) {
-        assistant.runtimeSequence = event.sequence
+        if (assistant.runtimeSequence == null) assistant.runtimeSequence = event.sequence
         assistant.createdAt = assistant.createdAt ?? new Date(event.timestamp).toISOString()
         assistant.isPending = true
         if (!assistant.content.trim()) assistant.content = ''
@@ -437,7 +437,6 @@ export const createRuntimeEventBridge = (options: RuntimeEventBridgeOptions) => 
         }
         assistant.run = run
         assistant.agentRunId = run.id
-        assistant.agentTurnId = event.agentTurnId ?? undefined
       }
       pruneStalePendingAssistantMessages(targetMessages)
       reorderChatMessagesInPlace(targetMessages)
@@ -520,7 +519,6 @@ export const createRuntimeEventBridge = (options: RuntimeEventBridgeOptions) => 
         assistant.isPending = !assistant.content.trim() && !assistant.widget
         assistant.run = run
         assistant.agentRunId = run.id
-        assistant.agentTurnId = event.tool.agentTurnId ?? undefined
         if (!assistant.content.trim()) assistant.content = ''
       }
       pruneStalePendingAssistantMessages(targetMessages)

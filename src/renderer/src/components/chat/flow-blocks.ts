@@ -764,7 +764,10 @@ export const buildMessageRenderFlow = (params: {
   })
 
   const shouldShowThinking = Boolean(
-    run.status === 'running' && currentTurn && currentTurnBlocks.length === 0
+    run.status === 'running' &&
+      currentTurn &&
+      currentTurnBlocks.length === 0 &&
+      normalizedBlocks.length === 0
   )
 
   return {

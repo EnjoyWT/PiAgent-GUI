@@ -29,11 +29,25 @@ test('runtime debug disables timeline ingest and persisted event history', () =>
   assert.match(debugSource, /const RUNTIME_DEBUG_EVENT_HISTORY_DISABLED = true/)
   assert.match(debugSource, /const RUNTIME_DEBUG_TIMELINE_DISABLED = true/)
   assert.doesNotMatch(refreshBody, /window\.api\.runtime\.listRuntimeEvents\(/)
-  assert.doesNotMatch(emitBody, /window\.api\.runtime\.recordRendererDebugEvent\(/)
+  assert.match(
+    debugSource,
+    /const isRuntimeUiTraceEnabled = \(\): boolean => import\.meta\.env\.DEV/
+  )
+  assert.match(
+    emitBody,
+    /if \(RUNTIME_DEBUG_TIMELINE_DISABLED && !isRuntimeUiTraceEnabled\(\)\) return/
+  )
+  assert.match(
+    debugSource,
+    /if \(isRuntimeUiTraceEnabled\(\) && RUNTIME_UI_TRACE_EVENT_TYPES\.has\(eventType\)\) \{\s*void window\.api\.runtime\.recordRendererDebugEvent\(threadId, event\)/
+  )
   assert.doesNotMatch(scheduleBody, /refreshRuntimeDebugEvents\(/)
 
   assert.match(appendLiveBody, /if \(RUNTIME_DEBUG_TIMELINE_DISABLED\) return/)
-  assert.match(emitBody, /if \(RUNTIME_DEBUG_TIMELINE_DISABLED\) return/)
+  assert.match(
+    emitBody,
+    /if \(RUNTIME_DEBUG_TIMELINE_DISABLED && !isRuntimeUiTraceEnabled\(\)\) return/
+  )
   assert.match(eventsBody, /if \(RUNTIME_DEBUG_TIMELINE_DISABLED\) return \[\]/)
 
   assert.match(

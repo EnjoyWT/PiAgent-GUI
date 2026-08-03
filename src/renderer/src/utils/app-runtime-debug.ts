@@ -7,6 +7,14 @@ import type { AgentRun } from '../components/chat/types'
 const RUNTIME_DEBUG_EVENT_HISTORY_DISABLED = true
 /** Timeline 数据接收总开关：true 时不再收集 live/debug 事件。 */
 const RUNTIME_DEBUG_TIMELINE_DISABLED = true
+// 临时开发态追踪：只记录跨边界状态，不开启 Timeline，也不记录 token delta。
+const RUNTIME_UI_TRACE_EVENT_TYPES = new Set([
+  'debugUiThreadWindowApply',
+  'debugUiRunEventApplied',
+  'debugUiAssistantStarted',
+  'debugUiRunFinalized'
+])
+const isRuntimeUiTraceEnabled = (): boolean => import.meta.env.DEV
 
 type RuntimeDebugRunOption = {
   id: string
@@ -257,9 +265,12 @@ export const useRuntimeDebugState = <T extends { id: string }>({
     payload: unknown,
     options?: { agentRunId?: string | null }
   ): void => {
-    if (RUNTIME_DEBUG_TIMELINE_DISABLED) return
+    if (RUNTIME_DEBUG_TIMELINE_DISABLED && !isRuntimeUiTraceEnabled()) return
     const event = createRendererDebugEvent(threadId, eventType, payload, options)
-    appendRuntimeLiveDebugEvent(threadId, event)
+    if (!RUNTIME_DEBUG_TIMELINE_DISABLED) appendRuntimeLiveDebugEvent(threadId, event)
+    if (isRuntimeUiTraceEnabled() && RUNTIME_UI_TRACE_EVENT_TYPES.has(eventType)) {
+      void window.api.runtime.recordRendererDebugEvent(threadId, event)
+    }
     if (RUNTIME_DEBUG_EVENT_HISTORY_DISABLED) return
   }
 

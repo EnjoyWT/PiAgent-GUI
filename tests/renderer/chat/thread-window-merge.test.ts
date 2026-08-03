@@ -202,6 +202,79 @@ test('mergeLatestWindowAuthoritatively drops an unpersisted assistant turn when 
   )
 })
 
+test('mergeLatestWindowAuthoritatively replaces a stable live run container with hydrated assistant turns', () => {
+  const liveRunContainer: ChatMessage = {
+    role: 'assistant',
+    content: '',
+    isPending: true,
+    agentRunId: 'run-1',
+    runtimeSequence: 5
+  }
+  const hydratedAssistant: ChatMessage = {
+    id: 'assistant-1',
+    role: 'assistant',
+    content: '完整回复',
+    agentRunId: 'run-1',
+    agentTurnId: 'turn-1',
+    createdAt: '2026-08-03T16:58:19.000+08:00',
+    runtimeSequence: 5
+  }
+
+  const merged = mergeLatestWindowAuthoritatively([liveRunContainer], [hydratedAssistant])
+
+  assert.deepEqual(merged, [hydratedAssistant])
+})
+
+test('mergeLatestWindowAuthoritatively replaces an unpersisted run shell with the latest run shell', () => {
+  const cachedRunShell: ChatMessage = {
+    role: 'assistant',
+    content: '',
+    isPending: true,
+    agentRunId: 'run-1'
+  }
+  const latestRunShell: ChatMessage = {
+    role: 'assistant',
+    content: '',
+    isPending: true,
+    agentRunId: 'run-1',
+    createdAt: '2026-08-03T17:27:12.403+08:00'
+  }
+
+  const merged = mergeLatestWindowAuthoritatively([cachedRunShell], [latestRunShell])
+
+  assert.deepEqual(merged, [latestRunShell])
+})
+
+test('mergeLatestWindowAuthoritatively replaces an optimistic placeholder with a hydrated pending assistant shell', () => {
+  const optimisticThinking: ChatMessage = {
+    role: 'assistant',
+    content: '思考中...',
+    isPending: true
+  }
+  const hydratedUser: ChatMessage = {
+    id: 'user-1',
+    role: 'user',
+    content: '继续',
+    createdAt: '2026-08-03T17:04:59.834+08:00'
+  }
+  const hydratedAssistantShell: ChatMessage = {
+    id: 'assistant-1',
+    role: 'assistant',
+    content: '',
+    isPending: true,
+    agentRunId: 'run-1',
+    agentTurnId: 'turn-1',
+    createdAt: '2026-08-03T17:05:00.000+08:00'
+  }
+
+  const merged = mergeLatestWindowAuthoritatively(
+    [hydratedUser, optimisticThinking],
+    [hydratedUser, hydratedAssistantShell]
+  )
+
+  assert.deepEqual(merged, [hydratedUser, hydratedAssistantShell])
+})
+
 test('mergeLatestWindowAuthoritatively drops stale cache when latest page is empty', () => {
   const staleUser: ChatMessage = {
     role: 'user',
@@ -217,6 +290,27 @@ test('mergeLatestWindowAuthoritatively drops stale cache when latest page is emp
   const merged = mergeLatestWindowAuthoritatively([staleUser, staleAssistant], [])
 
   assert.deepEqual(merged, [])
+})
+
+test('mergeLatestWindowAuthoritatively retains a running cache when its latest snapshot is empty', () => {
+  const activeUser: ChatMessage = {
+    id: 'user-running',
+    role: 'user',
+    content: '继续',
+    createdAt: '2026-08-03T11:13:57.073+08:00'
+  }
+  const activeRun: ChatMessage = {
+    role: 'assistant',
+    content: '',
+    isPending: true,
+    agentRunId: 'run-running'
+  }
+
+  const merged = mergeLatestWindowAuthoritatively([activeUser, activeRun], [], {
+    preserveWhenLatestEmpty: true
+  })
+
+  assert.deepEqual(merged, [activeUser, activeRun])
 })
 
 test('preserveLatestInlineWidgetRuntimeState carries hydrated widget runtime fields into the latest page', () => {

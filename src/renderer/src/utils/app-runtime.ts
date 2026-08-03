@@ -15,6 +15,7 @@ import type {
   AgentTurnProjection
 } from '@shared/agent-runtime'
 import { getPlainTextFromBlocks } from '@shared/chat-content'
+import { removeOptimisticAssistantPlaceholders } from './pending-assistant-placeholder.ts'
 import type {
   TransportPluginAccountSetupEvent,
   TransportPluginAccountSetupEventState
@@ -610,6 +611,26 @@ export const ensureAssistantTurnMessageIn = (
   allowCreate = true
 ): ChatMessage | null => {
   const turnId = turn?.id ?? null
+  const removeDuplicateOptimisticPlaceholders = (): void => {
+    if (!run) return
+    removeOptimisticAssistantPlaceholders(list)
+  }
+
+  // A running run owns one stable flow container.  Individual turns update the
+  // run attached to that container; they must not create a new DOM owner and
+  // temporarily hide every earlier turn while the model advances.
+  const existingRunContainer = run
+    ? list.find(
+        (message) => message.role === 'assistant' && (message.agentRunId ?? null) === run.id
+      )
+    : null
+  if (existingRunContainer && run) {
+    existingRunContainer.agentRunId = run.id
+    existingRunContainer.run = run
+    removeDuplicateOptimisticPlaceholders()
+    return existingRunContainer
+  }
+
   const existing = findAssistantTurnMessageIn(list, run, turnId)
   if (existing) {
     if (run) {
@@ -617,6 +638,7 @@ export const ensureAssistantTurnMessageIn = (
       existing.run = run
     }
     if (turnId) existing.agentTurnId = turnId
+    removeDuplicateOptimisticPlaceholders()
     return existing
   }
 
@@ -636,7 +658,7 @@ export const ensureAssistantTurnMessageIn = (
       last.agentRunId = run.id
       last.run = run
     }
-    if (turnId) last.agentTurnId = turnId
+    removeDuplicateOptimisticPlaceholders()
     return last
   }
   if (!allowCreate) return null
@@ -645,10 +667,10 @@ export const ensureAssistantTurnMessageIn = (
     content: '',
     isPending: true,
     agentRunId: run?.id,
-    agentTurnId: turnId ?? undefined,
     run: run ?? undefined
   }
   list.push(next)
+  removeDuplicateOptimisticPlaceholders()
   return next
 }
 

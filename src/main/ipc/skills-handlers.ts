@@ -4,15 +4,17 @@ import path from 'node:path'
 import { loadSkills, type ResourceDiagnostic } from '@earendil-works/pi-coding-agent'
 import { getAgentPluginStateService } from '../agent-plugins/agent-plugin-state-service-singleton'
 import { getSetting, setSetting } from '../db/config-db'
-import { getDefaultSharedSkillsDir, getDefaultSkillsDir, getPreferredAppConfigDir } from '../paths'
+import {
+  getDefaultSharedSkillsDir,
+  getDefaultSkillsDir,
+  getPiMonoAgentDir
+} from '../paths'
 import { resolveSkillSearchPaths } from '../skills/skill-path-service'
 import { installSkillsFromGitHub } from '../skills/skills-install-service'
 import { ensureSkillsDir } from '../skills/skills-root-service'
 
 const skillsDisabledKey = (): string => `skills_disabled`
 const skillsExtraDirsKey = (): string => `skills_extra_dirs`
-
-const getAgentDir = (): string => path.join(getPreferredAppConfigDir(), 'agent')
 
 const readExtraDirs = (): string[] => {
   const raw = getSetting(skillsExtraDirsKey())
@@ -77,7 +79,7 @@ const getGlobalSkillPaths = (): string[] => {
 const loadKnownSkills = (): ReturnType<typeof loadSkills> =>
   loadSkills({
     cwd: process.cwd(),
-    agentDir: getAgentDir(),
+    agentDir: getPiMonoAgentDir(),
     includeDefaults: false,
     skillPaths: getGlobalSkillPaths()
   })

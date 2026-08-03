@@ -36,11 +36,20 @@ export const toBashPath = (value: string, platform: NodeJS.Platform = process.pl
   return `/${driveMatch[1].toLowerCase()}/${driveMatch[2]}`
 }
 
+const resolveDefaultDirname = (): string => {
+  try {
+    // CJS / Electron main usually define __dirname.
+    return typeof __dirname === 'string' ? __dirname : process.cwd()
+  } catch {
+    return process.cwd()
+  }
+}
+
 export const resolvePiAgentCliBinDir = (
   options: ResolvePiAgentCliPathOptions = {}
 ): string | null => {
   const cwd = options.cwd ?? process.cwd()
-  const dirname = options.dirname ?? __dirname
+  const dirname = options.dirname ?? resolveDefaultDirname()
   const resourcesPath = options.resourcesPath ?? process.resourcesPath ?? ''
   const candidates = uniqueExistingCandidateDirs([
     path.join(resourcesPath, 'bin'),

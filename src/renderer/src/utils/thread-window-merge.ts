@@ -49,10 +49,18 @@ export const compareChatMessagesByTimeline = (
 
 export const mergeLatestWindowAuthoritatively = (
   existing: ChatMessage[],
-  latestPage: ChatMessage[]
+  latestPage: ChatMessage[],
+  options?: { preserveWhenLatestEmpty?: boolean }
 ): ChatMessage[] => {
   const oldestLatest = latestPage[0]
-  if (!oldestLatest) return []
+  if (!oldestLatest) return options?.preserveWhenLatestEmpty ? [...existing] : []
+
+  const latestTail = latestPage.at(-1)
+  const latestEndsWithRunBackedAssistantShell = Boolean(
+    latestTail?.role === 'assistant' &&
+      latestTail.isPending &&
+      (latestTail.agentRunId || latestTail.agentTurnId)
+  )
 
   const latestIds = new Set(latestPage.map((message) => message.id).filter(Boolean))
   const preservedHistory = existing.filter(
@@ -66,8 +74,48 @@ export const mergeLatestWindowAuthoritatively = (
     if (message.id) return false
     if (compareChatMessagesByTimeline(message, oldestLatest) < 0) return false
 
-    if (message.role === 'assistant' && message.agentTurnId) {
-      if (latestPage.some((m) => m.role === 'assistant' && m.agentTurnId === message.agentTurnId)) {
+    if (
+      latestEndsWithRunBackedAssistantShell &&
+      message.role === 'assistant' &&
+      message.isPending &&
+      !message.agentRunId &&
+      !message.agentTurnId &&
+      !message.run &&
+      !message.widget &&
+      !(message.blocks?.length ?? 0) &&
+      ['', '思考中', '思考中...'].includes(message.content.trim())
+    ) {
+      return false
+    }
+
+    if (message.role === 'assistant') {
+      const hasLatestAssistantWithSameRuntimeIdentity = Boolean(
+        message.agentRunId &&
+          latestPage.some(
+            (latest) =>
+              latest.role === 'assistant' &&
+              latest.agentRunId === message.agentRunId &&
+              (latest.agentTurnId ?? null) === (message.agentTurnId ?? null)
+          )
+      )
+      if (hasLatestAssistantWithSameRuntimeIdentity) return false
+
+      const hasHydratedAssistantForRun = Boolean(
+        message.agentRunId &&
+          latestPage.some(
+            (m) =>
+              m.role === 'assistant' &&
+              Boolean(m.id) &&
+              m.agentRunId === message.agentRunId
+          )
+      )
+      if (!message.agentTurnId && hasHydratedAssistantForRun) {
+        return false
+      }
+      if (
+        message.agentTurnId &&
+        latestPage.some((m) => m.role === 'assistant' && m.agentTurnId === message.agentTurnId)
+      ) {
         return false
       }
     }

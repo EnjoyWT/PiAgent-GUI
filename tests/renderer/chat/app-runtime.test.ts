@@ -25,6 +25,7 @@ registerHooks({
 const {
   applyTransportAccountSetupEventToRuns,
   buildRunFinishedNotificationPreview,
+  ensureAssistantTurnMessageIn,
   getRunFinishedNotificationPreview,
   shouldCreateAssistantMessageForTurn,
   turnHasVisibleAssistantOutput
@@ -88,6 +89,75 @@ test('creates an assistant message shell for an empty running turn', () => {
   const turn = run.turns[0]
 
   assert.equal(shouldCreateAssistantMessageForTurn(turn), true)
+})
+
+test('uses one stable assistant flow container across live turns of the same run', () => {
+  const run: AgentRun = {
+    id: 'run-multi-turn',
+    threadId: 'thread-1',
+    status: 'running',
+    text: '',
+    startedAt: 10,
+    turns: [
+      {
+        id: 'turn-1',
+        index: 0,
+        status: 'done',
+        text: '',
+        toolCalls: [],
+        timelineItems: [],
+        startedAt: 10,
+        endedAt: 20
+      },
+      {
+        id: 'turn-2',
+        index: 1,
+        status: 'running',
+        text: '',
+        toolCalls: [],
+        timelineItems: [],
+        startedAt: 21
+      }
+    ]
+  }
+  const messages: ChatMessage[] = []
+
+  const initialContainer = ensureAssistantTurnMessageIn(messages, run, run.turns[0])
+  const currentContainer = ensureAssistantTurnMessageIn(messages, run, run.turns[1])
+
+  assert.equal(currentContainer, initialContainer)
+  assert.equal(messages.length, 1)
+})
+
+test('binds a run to only one optimistic thinking placeholder', () => {
+  const run: AgentRun = {
+    id: 'run-placeholder',
+    threadId: 'thread-1',
+    status: 'running',
+    text: '',
+    startedAt: 10,
+    turns: [
+      {
+        id: 'turn-1',
+        index: 0,
+        status: 'running',
+        text: '',
+        toolCalls: [],
+        timelineItems: [],
+        startedAt: 10
+      }
+    ]
+  }
+  const messages: ChatMessage[] = [
+    { role: 'assistant', content: '思考中...', isPending: true },
+    { role: 'assistant', content: '思考中...', isPending: true }
+  ]
+
+  const container = ensureAssistantTurnMessageIn(messages, run, run.turns[0])
+
+  assert.equal(messages.length, 1)
+  assert.equal(messages[0], container)
+  assert.equal(container?.agentRunId, run.id)
 })
 
 test('keeps a completed thinking-only turn renderable', () => {

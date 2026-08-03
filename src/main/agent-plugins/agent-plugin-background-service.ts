@@ -4,7 +4,7 @@ import {
   type ExtensionFactory,
   type ToolDefinition
 } from '@earendil-works/pi-coding-agent'
-import { getDefaultAgentDir } from '../paths.ts'
+import { getPiMonoAgentDir } from '../paths.ts'
 import {
   resolveAgentPluginResources,
   type PluginMcpServerConfig
@@ -65,7 +65,7 @@ export class AgentPluginBackgroundExtensionService {
 
   constructor(options: AgentPluginBackgroundExtensionServiceOptions = {}) {
     this.cwd = options.cwd ?? (() => app.getPath('userData'))
-    this.agentDir = options.agentDir ?? getDefaultAgentDir
+    this.agentDir = options.agentDir ?? getPiMonoAgentDir
     this.resolveResources = options.resolveResources ?? resolveAgentPluginResources
     this.createLoader =
       options.createLoader ??

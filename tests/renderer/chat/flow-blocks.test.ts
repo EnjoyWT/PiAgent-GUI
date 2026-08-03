@@ -343,6 +343,46 @@ test('does not show thinking placeholder while a running turn has visible text o
   )
 })
 
+test('does not append a thinking placeholder after visible output from an earlier turn', () => {
+  const run = createRun({
+    status: 'running',
+    turns: [
+      {
+        id: 'turn-1',
+        index: 0,
+        status: 'done',
+        text: '已完成第一步',
+        toolCalls: [],
+        timelineItems: [
+          {
+            id: 'text-1',
+            kind: 'text',
+            text: '已完成第一步',
+            startedAt: 10,
+            endedAt: 20
+          }
+        ],
+        startedAt: 10,
+        endedAt: 20
+      },
+      {
+        id: 'turn-2',
+        index: 1,
+        status: 'running',
+        text: '',
+        toolCalls: [],
+        timelineItems: [],
+        startedAt: 21
+      }
+    ]
+  })
+
+  const flow = buildMessageRenderFlow({ run })
+
+  assert.equal(flow.meta.showThinkingPlaceholder, false)
+  assert.deepEqual(flow.blocks.map((block) => block.kind), ['text'])
+})
+
 test('marks only the last open thinking block as active', () => {
   const run = createRun({
     turns: [

@@ -1107,3 +1107,82 @@ test('runtime bridge falls back to core seed when context seed is empty', async 
   assert.equal(applied, false)
   assert.equal(session.agent.state.messages.length, 0)
 })
+
+test('runtime bridge discovers pi-mono global extensions from shared agentDir settings', async () => {
+  const tempRoot = mkdtempSync(resolve(os.tmpdir(), 'piagent-pi-mono-config-'))
+  const previousAgentDir = process.env.PI_CODING_AGENT_DIR
+
+  try {
+    const piAgentDir = resolve(tempRoot, 'pi-agent')
+    const workspacePath = resolve(tempRoot, 'workspace')
+    const extensionsDir = resolve(piAgentDir, 'extensions')
+    const extensionPath = resolve(extensionsDir, 'shared-ext.js')
+    mkdirSync(workspacePath, { recursive: true })
+    mkdirSync(extensionsDir, { recursive: true })
+    writeFileSync(
+      extensionPath,
+      'export default function extension(pi) { pi.on("agent_start", () => undefined) }\n',
+      'utf8'
+    )
+    writeFileSync(resolve(piAgentDir, 'settings.json'), JSON.stringify({ packages: [] }, null, 2), 'utf8')
+
+    process.env.PI_CODING_AGENT_DIR = piAgentDir
+
+    const bridge = new CodingAgentRuntimeBridge({ core: createCore() })
+    const loader = await (bridge as any).createResourceLoader(
+      workspacePath,
+      'thread-shared-ext',
+      { buildSystemPrompt: () => '' },
+      'conversation-shared-ext',
+      {
+        skillPaths: [],
+        extensionPaths: [],
+        extensionFactories: []
+      }
+    )
+
+    const loaded = loader.getExtensions()
+    assert.ok(
+      loaded.extensions.some((extension: { resolvedPath: string }) => extension.resolvedPath === extensionPath),
+      `expected global extension ${extensionPath}, got ${JSON.stringify(
+        loaded.extensions.map((extension: { resolvedPath: string }) => extension.resolvedPath)
+      )}`
+    )
+  } finally {
+    if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR
+    else process.env.PI_CODING_AGENT_DIR = previousAgentDir
+    rmSync(tempRoot, { recursive: true, force: true })
+  }
+})
+
+test('runtime session settings clone shell prefix without writing pi settings.json', async () => {
+  const tempRoot = mkdtempSync(resolve(os.tmpdir(), 'piagent-pi-mono-settings-'))
+  const previousAgentDir = process.env.PI_CODING_AGENT_DIR
+
+  try {
+    const piAgentDir = resolve(tempRoot, 'pi-agent')
+    const workspacePath = resolve(tempRoot, 'workspace')
+    const settingsPath = resolve(piAgentDir, 'settings.json')
+    mkdirSync(workspacePath, { recursive: true })
+    mkdirSync(piAgentDir, { recursive: true })
+    const originalSettings = JSON.stringify({ defaultModel: 'keep-me', packages: [] }, null, 2)
+    writeFileSync(settingsPath, originalSettings, 'utf8')
+    process.env.PI_CODING_AGENT_DIR = piAgentDir
+
+    const bridge = new CodingAgentRuntimeBridge({ core: createCore() })
+    const discovery = (bridge as any).createDiscoverySettingsManager(workspacePath)
+    const sessionSettings = (bridge as any).createSessionSettingsManager(discovery)
+
+    assert.match(String(sessionSettings.getShellCommandPrefix() ?? ''), /piagent|http|node/i)
+    sessionSettings.setDefaultModelAndProvider('openai', 'gpt-test')
+    await sessionSettings.flush()
+
+    const { readFileSync } = await import('node:fs')
+    assert.equal(readFileSync(settingsPath, 'utf8'), originalSettings)
+  } finally {
+    if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR
+    else process.env.PI_CODING_AGENT_DIR = previousAgentDir
+    rmSync(tempRoot, { recursive: true, force: true })
+  }
+})
+

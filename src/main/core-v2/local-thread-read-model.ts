@@ -836,9 +836,10 @@ const buildRecoveredAssistantTurnMessage = (
 })
 
 const shouldRecoverRunLevelAssistantMessage = (run: AgentRunProjection): boolean =>
-  run.turns.length === 0 &&
-  (run.text.trim().length > 0 ||
-    (run.status === 'error' && Boolean(run.termination?.message?.trim())))
+  run.status === 'running' ||
+  (run.turns.length === 0 &&
+    (run.text.trim().length > 0 ||
+      (run.status === 'error' && Boolean(run.termination?.message?.trim()))))
 
 const buildRecoveredRunLevelAssistantMessage = (
   run: AgentRunProjection
@@ -1170,6 +1171,20 @@ const buildThreadProjectionFromSeed = (
     (left, right) => left.startedAt - right.startedAt
   )
   for (const run of projectedRuns) {
+    if (run.status === 'running') {
+      // A live run is rendered as one flow container.  Its turns are flow data,
+      // not separate chat rows; otherwise the window recovery path races the
+      // renderer's run-level container and leaves a duplicate thinking shell.
+      for (let index = visibleMessages.length - 1; index >= 0; index -= 1) {
+        const message = visibleMessages[index]
+        if (message?.role === 'assistant' && message.agentRunId === run.agentRunId) {
+          visibleMessages.splice(index, 1)
+        }
+      }
+      visibleMessages.push(buildRecoveredRunLevelAssistantMessage(run))
+      continue
+    }
+
     const hasLegacyRunMessage = assistantMessageKeys.has(`run:${run.agentRunId}`)
     if (hasLegacyRunMessage) continue
     for (const turn of run.turns) {

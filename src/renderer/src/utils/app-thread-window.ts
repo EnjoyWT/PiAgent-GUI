@@ -210,6 +210,7 @@ export const useThreadWindowState = <T extends HistoryViewport>({
     mode: 'replace' | 'prepend' | 'merge-latest'
   ): void => {
     const hadExistingCache = messageCacheByThreadId.has(threadId)
+    const controller = ensureQueueController(threadId)
     const { runMap, chatMessages, activeRun } = buildChatStateFromThreadWindowPage(page)
     const existingMessages = messageCacheByThreadId.get(threadId) ?? []
     const pageMessages = dedupeChatMessages(
@@ -252,7 +253,16 @@ export const useThreadWindowState = <T extends HistoryViewport>({
       setHasMoreHistory(threadId, page.pageInfo.hasMoreBefore)
       setOldestCursor(threadId, page.pageInfo.nextBeforeCursor)
     } else {
-      const merged = mergeLatestWindowAuthoritatively(list, pageMessages)
+      const merged = mergeLatestWindowAuthoritatively(list, pageMessages, {
+        // A live snapshot can momentarily have no transcript rows while its
+        // runtime events are still arriving.  It is not authoritative over the
+        // in-memory run container in that state.
+        preserveWhenLatestEmpty:
+          pageMessages.length === 0 &&
+          (page.isStreaming ||
+            controller.runtimeState === 'running' ||
+            controller.runtimeState === 'dispatching')
+      })
       list.splice(0, list.length, ...merged)
       if (merged.length === pageMessages.length) {
         setHasMoreHistory(threadId, page.pageInfo.hasMoreBefore)
