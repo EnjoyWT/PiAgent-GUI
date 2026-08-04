@@ -50,7 +50,8 @@ import type {
   UpsertConversationMessageInput,
   UpsertEventLogEntryInput,
   UpsertThreadPlanStateInput,
-  UpsertAgentProfileInput
+  UpsertAgentProfileInput,
+  ThreadDeletionJob
 } from './domain.ts'
 import {
   createExecutionSnapshot,
@@ -1087,8 +1088,7 @@ export class SqliteCoreService implements CoreCommandService, CoreQueryService {
                 `
               )
               .get(input.conversationId, input.externalMessageId) as
-              | ConversationMessageRow
-              | undefined)
+              ConversationMessageRow | undefined)
           : undefined
 
       if (existingRow) {
@@ -1814,6 +1814,37 @@ export class SqliteCoreService implements CoreCommandService, CoreQueryService {
     tx()
   }
 
+  scheduleConversationDeletion(input: { conversationId: string; threadId: string }): boolean {
+    const conversationId = String(input.conversationId ?? '').trim()
+    const threadId = String(input.threadId ?? '').trim()
+    if (!conversationId || !threadId) return false
+
+    const tx = this.db.transaction(() => {
+      const existing = this.getConversation(conversationId)
+      if (!existing) return false
+      const now = asCoreTimestamp()
+      this.db
+        .prepare(
+          `UPDATE conversations SET desktop_visibility_mode = 'hidden', updated_at = ? WHERE id = ?`
+        )
+        .run(now, conversationId)
+      this.db
+        .prepare(
+          `
+            INSERT INTO thread_deletion_jobs (
+              conversation_id, thread_id, status, last_error, created_at, updated_at
+            ) VALUES (?, ?, 'queued', NULL, ?, ?)
+            ON CONFLICT(conversation_id) DO NOTHING
+          `
+        )
+        .run(conversationId, threadId, now, now)
+      this.rebuildConversationWindowProjection(conversationId)
+      return true
+    })
+
+    return tx()
+  }
+
   deleteConversation(input: DeleteConversationInput): boolean {
     const tx = this.db.transaction(() => {
       const existing = this.getConversation(input.conversationId)
@@ -1849,6 +1880,29 @@ export class SqliteCoreService implements CoreCommandService, CoreQueryService {
     return tx()
   }
 
+  listThreadDeletionJobs(): ThreadDeletionJob[] {
+    const rows = this.db
+      .prepare(
+        `
+          SELECT conversation_id, thread_id, status, last_error
+          FROM thread_deletion_jobs
+          ORDER BY created_at ASC
+        `
+      )
+      .all() as Array<{
+      conversation_id: string
+      thread_id: string
+      status: ThreadDeletionJob['status']
+      last_error: string | null
+    }>
+    return rows.map((row) => ({
+      conversationId: row.conversation_id,
+      threadId: row.thread_id,
+      status: row.status,
+      lastError: row.last_error
+    }))
+  }
+
   /**
    * 清理旧的 event_log 记录
    * @param retentionDays 保留天数，默认 30 天
@@ -1859,9 +1913,7 @@ export class SqliteCoreService implements CoreCommandService, CoreQueryService {
     cutoffDate.setDate(cutoffDate.getDate() - retentionDays)
     const cutoff = cutoffDate.toISOString()
 
-    const result = this.db
-      .prepare(`DELETE FROM event_log WHERE created_at < ?`)
-      .run(cutoff)
+    const result = this.db.prepare(`DELETE FROM event_log WHERE created_at < ?`).run(cutoff)
 
     return result.changes
   }
@@ -1869,7 +1921,11 @@ export class SqliteCoreService implements CoreCommandService, CoreQueryService {
   /**
    * 获取 event_log 表的统计信息
    */
-  getEventLogStats(): { totalCount: number; oldestEntry: string | null; newestEntry: string | null } {
+  getEventLogStats(): {
+    totalCount: number
+    oldestEntry: string | null
+    newestEntry: string | null
+  } {
     const stats = this.db
       .prepare(
         `
@@ -1948,8 +2004,7 @@ export class SqliteCoreService implements CoreCommandService, CoreQueryService {
     const createdAt = asCoreTimestamp(input.createdAt)
     const existing = input.id
       ? ((this.db.prepare(`SELECT * FROM event_log WHERE id = ?`).get(input.id) as
-          | EventLogRow
-          | undefined) ?? null)
+          EventLogRow | undefined) ?? null)
       : null
     const entryId = input.id ?? generateId()
     const sequence = existing?.sequence ?? this.getNextEventSequence()
@@ -2001,22 +2056,19 @@ export class SqliteCoreService implements CoreCommandService, CoreQueryService {
 
   getAgentProfile(id: string): AgentProfile | null {
     const row = this.db.prepare(`SELECT * FROM agent_profiles WHERE id = ?`).get(id) as
-      | AgentProfileRow
-      | undefined
+      AgentProfileRow | undefined
     return row ? this.mapAgentProfile(row) : null
   }
 
   getConversation(id: string): Conversation | null {
     const row = this.db.prepare(`SELECT * FROM conversations WHERE id = ?`).get(id) as
-      | ConversationRow
-      | undefined
+      ConversationRow | undefined
     return row ? this.mapConversation(row) : null
   }
 
   getConversationBinding(id: string): ConversationBinding | null {
     const row = this.db.prepare(`SELECT * FROM conversation_bindings WHERE id = ?`).get(id) as
-      | ConversationBindingRow
-      | undefined
+      ConversationBindingRow | undefined
     return row ? this.mapConversationBinding(row) : null
   }
 
@@ -2104,8 +2156,9 @@ export class SqliteCoreService implements CoreCommandService, CoreQueryService {
 
     const roles = (input.roles ?? [])
       .map((role) => String(role ?? '').trim())
-      .filter((role): role is ConversationSearchResultItem['role'] =>
-        role === 'user' || role === 'assistant' || role === 'tool'
+      .filter(
+        (role): role is ConversationSearchResultItem['role'] =>
+          role === 'user' || role === 'assistant' || role === 'tool'
       )
     if (roles.length > 0) {
       clauses.push(`role IN (${roles.map(() => '?').join(', ')})`)
@@ -2199,8 +2252,7 @@ export class SqliteCoreService implements CoreCommandService, CoreQueryService {
 
   getAgentRun(id: string): AgentRun | null {
     const row = this.db.prepare(`SELECT * FROM agent_runs WHERE id = ?`).get(id) as
-      | AgentRunRow
-      | undefined
+      AgentRunRow | undefined
     return row ? this.mapAgentRun(row) : null
   }
 
@@ -2398,8 +2450,7 @@ export class SqliteCoreService implements CoreCommandService, CoreQueryService {
 
   getDeliveryRecord(id: string): DeliveryRecord | null {
     const row = this.db.prepare(`SELECT * FROM delivery_records WHERE id = ?`).get(id) as
-      | DeliveryRecordRow
-      | undefined
+      DeliveryRecordRow | undefined
     return row ? this.mapDeliveryRecord(row) : null
   }
 
@@ -2541,8 +2592,7 @@ export class SqliteCoreService implements CoreCommandService, CoreQueryService {
           `
         )
         .get(conversationId) as
-        | { kind: ConversationWindowProjection['pendingInteractionKind'] }
-        | undefined
+        { kind: ConversationWindowProjection['pendingInteractionKind'] } | undefined
     )?.kind
     const projection: ConversationWindowProjection = {
       conversationId,
@@ -2666,8 +2716,7 @@ export class SqliteCoreService implements CoreCommandService, CoreQueryService {
 
   private getAgentProfileBySlug(slug: string): AgentProfile | null {
     const row = this.db.prepare(`SELECT * FROM agent_profiles WHERE slug = ?`).get(slug) as
-      | AgentProfileRow
-      | undefined
+      AgentProfileRow | undefined
     return row ? this.mapAgentProfile(row) : null
   }
 
@@ -2976,8 +3025,7 @@ export class SqliteCoreService implements CoreCommandService, CoreQueryService {
 
   private requireInteractionCheckpoint(id: string): InteractionCheckpoint {
     const row = this.db.prepare(`SELECT * FROM interaction_checkpoints WHERE id = ?`).get(id) as
-      | InteractionCheckpointRow
-      | undefined
+      InteractionCheckpointRow | undefined
     if (!row) {
       throw new Error(`Unknown InteractionCheckpoint: ${id}`)
     }
@@ -2986,8 +3034,7 @@ export class SqliteCoreService implements CoreCommandService, CoreQueryService {
 
   private requireEventLogEntry(id: string): EventLogEntry {
     const row = this.db.prepare(`SELECT * FROM event_log WHERE id = ?`).get(id) as
-      | EventLogRow
-      | undefined
+      EventLogRow | undefined
     if (!row) {
       throw new Error(`Unknown EventLogEntry: ${id}`)
     }
@@ -3038,13 +3085,16 @@ export class SqliteCoreService implements CoreCommandService, CoreQueryService {
 
     // Total count
     const totalRow = this.db
-      .prepare(`SELECT COUNT(*) AS total FROM conversations c LEFT JOIN conversation_window_projection cwp ON cwp.conversation_id = c.id ${where}`)
+      .prepare(
+        `SELECT COUNT(*) AS total FROM conversations c LEFT JOIN conversation_window_projection cwp ON cwp.conversation_id = c.id ${where}`
+      )
       .get(...params) as { total?: number } | undefined
     const total = Math.max(0, Number(totalRow?.total ?? 0))
 
     // Items with binding and message count
     const rows = this.db
-      .prepare(`
+      .prepare(
+        `
         SELECT
           c.id AS conversation_id,
           c.title,
@@ -3072,7 +3122,8 @@ export class SqliteCoreService implements CoreCommandService, CoreQueryService {
         GROUP BY c.id
         ORDER BY COALESCE(cwp.last_message_at, c.updated_at) DESC, c.id ASC
         LIMIT ? OFFSET ?
-      `)
+      `
+      )
       .all(...params, limit, offset) as Array<Record<string, unknown>>
 
     const items = rows.map((row) => {
@@ -3111,11 +3162,14 @@ export class SqliteCoreService implements CoreCommandService, CoreQueryService {
           `
         )
         .all(...conversationIds) as Array<{
-          conversation_id: string
-          last_message_at: string | null
-          last_run_status: string | null
-        }>
-      const projMap = new Map<string, { last_message_at: string | null; last_run_status: string | null }>()
+        conversation_id: string
+        last_message_at: string | null
+        last_run_status: string | null
+      }>
+      const projMap = new Map<
+        string,
+        { last_message_at: string | null; last_run_status: string | null }
+      >()
       for (const p of projections) {
         projMap.set(p.conversation_id, {
           last_message_at: p.last_message_at,
@@ -3170,7 +3224,8 @@ export class SqliteCoreService implements CoreCommandService, CoreQueryService {
 
     // Fetch messages ordered by created_at
     const rows = this.db
-      .prepare(`
+      .prepare(
+        `
         SELECT
           cm.id AS message_id,
           cm.conversation_id,
@@ -3183,15 +3238,16 @@ export class SqliteCoreService implements CoreCommandService, CoreQueryService {
         ${where}
         ORDER BY cm.created_at ASC, cm.id ASC
         LIMIT ? OFFSET ?
-      `)
+      `
+      )
       .all(...params, limit, offset) as Array<{
-        message_id: string
-        conversation_id: string
-        role: string
-        text: string | null
-        created_at: string
-        conversation_title: string | null
-      }>
+      message_id: string
+      conversation_id: string
+      role: string
+      text: string | null
+      created_at: string
+      conversation_title: string | null
+    }>
 
     const items = rows.map((row) => ({
       messageId: String(row.message_id),
@@ -3211,7 +3267,9 @@ export class SqliteCoreService implements CoreCommandService, CoreQueryService {
     }
   }
 
-  listAllConversationMessages(input: ListAllConversationMessagesInput): ListAllConversationMessagesResult {
+  listAllConversationMessages(
+    input: ListAllConversationMessagesInput
+  ): ListAllConversationMessagesResult {
     const limit = Math.max(1, Math.min(Math.trunc(input.limit ?? 50), 200))
     const offset = Math.max(0, Math.trunc(input.offset ?? 0))
 
@@ -3245,7 +3303,8 @@ export class SqliteCoreService implements CoreCommandService, CoreQueryService {
 
     // Fetch messages ordered by created_at
     const rows = this.db
-      .prepare(`
+      .prepare(
+        `
         SELECT
           cm.id AS message_id,
           cm.conversation_id,
@@ -3258,15 +3317,16 @@ export class SqliteCoreService implements CoreCommandService, CoreQueryService {
         ${where}
         ORDER BY cm.created_at ASC, cm.id ASC
         LIMIT ? OFFSET ?
-      `)
+      `
+      )
       .all(...params, limit, offset) as Array<{
-        message_id: string
-        conversation_id: string
-        conversation_title: string | null
-        role: string
-        text: string | null
-        created_at: string
-      }>
+      message_id: string
+      conversation_id: string
+      conversation_title: string | null
+      role: string
+      text: string | null
+      created_at: string
+    }>
 
     const items = rows.map((row) => ({
       messageId: String(row.message_id),

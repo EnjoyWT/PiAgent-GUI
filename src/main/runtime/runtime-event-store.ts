@@ -15,6 +15,15 @@ type RuntimeEventStoreOptions = {
   }) => MessageRow | null | Promise<MessageRow | null>
 }
 
+const TRANSIENT_RUNTIME_EVENT_TYPES = new Set([
+  'agentMessageDelta',
+  'agentMessageThinkingDelta',
+  'agentToolCallProgress'
+])
+
+const shouldPersistRuntimeEvent = (event: NormalizedAgentRuntimeEvent): boolean =>
+  !TRANSIENT_RUNTIME_EVENT_TYPES.has(event.type)
+
 const safeJsonStringify = (value: unknown): string | null => {
   try {
     return JSON.stringify(value)
@@ -34,6 +43,7 @@ export class RuntimeEventStore {
 
   append(event: NormalizedAgentRuntimeEvent): void {
     this.persistRuntimeFacts(event)
+    if (!shouldPersistRuntimeEvent(event)) return
     this.queue.push({
       id: event.id,
       thread_id: event.threadId,
@@ -46,14 +56,6 @@ export class RuntimeEventStore {
       raw_json: safeJsonStringify(event.raw),
       created_at: event.timestamp
     })
-    if (
-      event.type === 'agentMessageDelta' ||
-      event.type === 'agentMessageThinkingDelta' ||
-      event.type === 'agentToolCallProgress'
-    ) {
-      this.scheduleFlush(48)
-      return
-    }
     this.scheduleFlush(0)
   }
 
@@ -97,7 +99,7 @@ export class RuntimeEventStore {
       agentRunId: event.agentRunId,
       agentTurnId: event.agentTurnId,
       consumedAt: event.timestamp,
-      runtimeSequence: event.sequence,
+      runtimeSequence: event.sequence
     })
 
     Promise.resolve(persistedOrPromise)

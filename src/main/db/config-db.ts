@@ -51,7 +51,7 @@ function seedDefaultProviders(db: Database.Database): void {
 function migrateConfigDb(db: Database.Database): void {
   // Enforce FK constraints for this connection (even though cross-db FKs won't work).
   db.pragma('foreign_keys = ON')
-  const latestVersion = 11
+  const latestVersion = 12
 
   const migrate = db.transaction(() => {
     let v = getUserVersion(db)
@@ -253,6 +253,12 @@ function migrateConfigDb(db: Database.Database): void {
       v = 11
       setUserVersion(db, v)
     }
+
+    if (v < 12) {
+      initPendingThreadDeletionSchema(db)
+      v = 12
+      setUserVersion(db, v)
+    }
   })
 
   migrate()
@@ -361,9 +367,20 @@ function initConfigSchema(db: Database.Database): void {
       ON workspace_sandbox_grants(workspace_path);
   `)
 
+  initPendingThreadDeletionSchema(db)
+
   ensureTransportPluginConfigSchema(db)
 
   seedDefaultProviders(db)
+}
+
+function initPendingThreadDeletionSchema(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS pending_thread_deletions (
+      thread_id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
+    );
+  `)
 }
 
 // ── global_settings ──────────────────────────────────────────────
@@ -386,6 +403,29 @@ export function getAllSettings(): Record<string, string> {
     value: string
   }[]
   return Object.fromEntries(rows.map((r) => [r.key, r.value]))
+}
+
+// ── durable local-thread deletion intents ───────────────────────
+export function enqueuePendingThreadDeletion(threadId: string): void {
+  const normalizedThreadId = String(threadId ?? '').trim()
+  if (!normalizedThreadId) return
+  getConfigDb()
+    .prepare(`INSERT OR IGNORE INTO pending_thread_deletions (thread_id) VALUES (?)`)
+    .run(normalizedThreadId)
+}
+
+export function listPendingThreadDeletions(): string[] {
+  return (
+    getConfigDb()
+      .prepare(`SELECT thread_id FROM pending_thread_deletions ORDER BY created_at ASC`)
+      .all() as Array<{ thread_id: string }>
+  ).map((row) => row.thread_id)
+}
+
+export function removePendingThreadDeletion(threadId: string): void {
+  getConfigDb()
+    .prepare(`DELETE FROM pending_thread_deletions WHERE thread_id = ?`)
+    .run(String(threadId ?? '').trim())
 }
 
 // ── providers ────────────────────────────────────────────────────

@@ -24,8 +24,8 @@ import {
   setWorkspaceMcpServerEnabled,
   clearWorkspaceMcpServerBindings
 } from '../db/config-db'
-import { getLocalThreadHostService } from '../core-v2/local-thread-host.ts'
 import { listLocalThreadRows } from '../core-v2/local-thread-query.ts'
+import { enqueueThreadDeletion } from '../core-v2/thread-deletion-service.ts'
 import {
   deleteRegisteredWidget,
   deleteRegisteredWidgetsByThreadId,
@@ -127,14 +127,9 @@ export function setupDbHandlers(): void {
       .filter((thread) => thread.workspace_path === workspacePath)
       .map((thread) => thread.id)
     for (const threadId of threadIds) deleteRegisteredWidgetsByThreadId(threadId)
-    return Promise.all(
-      threadIds.map((threadId) =>
-        getLocalThreadHostService().then((host) => host.deleteThread(threadId))
-      )
-    ).then(() => {
-      deleteWorkspace(workspacePath)
-      notifyWorkspacesChanged({ action: 'delete', workspacePath })
-    })
+    for (const threadId of threadIds) enqueueThreadDeletion(threadId)
+    deleteWorkspace(workspacePath)
+    notifyWorkspacesChanged({ action: 'delete', workspacePath })
   })
 
   // ── workspace settings ────────────────────────────────────────

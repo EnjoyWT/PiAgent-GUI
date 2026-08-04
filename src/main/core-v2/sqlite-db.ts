@@ -8,6 +8,8 @@ import { migrateCoreV2Schema } from './storage-schema.ts'
 let dbSingleton: Database.Database | null = null
 let serviceSingleton: SqliteCoreService | null = null
 
+export const CORE_V2_BUSY_TIMEOUT_MS = 1_000
+
 const getElectronApp = () => (electron as any).app ?? (electron as any).default?.app
 
 export const getDefaultCoreV2DbPath = (): string => {
@@ -19,11 +21,16 @@ export const getDefaultCoreV2DbPath = (): string => {
   return path.join(baseDir, 'core-v2.db')
 }
 
-export const createCoreV2Db = (dbPath: string): Database.Database => {
-  const db = new Database(dbPath)
+export const configureCoreV2Db = (db: Database.Database): void => {
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
+  db.pragma(`busy_timeout = ${CORE_V2_BUSY_TIMEOUT_MS}`)
   migrateCoreV2Schema(db)
+}
+
+export const createCoreV2Db = (dbPath: string): Database.Database => {
+  const db = new Database(dbPath)
+  configureCoreV2Db(db)
   return db
 }
 
@@ -55,7 +62,7 @@ export const getCoreV2Service = (): SqliteCoreService => {
 }
 
 export const setCoreV2Service = (service: SqliteCoreService | null): void => {
-  serviceSingleton = service;
+  serviceSingleton = service
 }
 
 export const closeCoreV2Db = (): void => {

@@ -72,6 +72,7 @@ type LocalThreadHostDeps = {
     | 'upsertEventLogEntry'
     | 'deleteConversationMessage'
     | 'pruneConversationRuntimeAfter'
+    | 'scheduleConversationDeletion'
     | 'deleteConversation'
   >
   projectionStore: LocalThreadProjectionStore
@@ -289,14 +290,14 @@ export class LocalThreadHostService {
       buildLocalThreadRoutingKey(normalizedThreadId)
     )
     if (match) {
-      this.core.deleteConversation({ conversationId: match.conversation.id })
+      this.core.scheduleConversationDeletion({
+        conversationId: match.conversation.id,
+        threadId: normalizedThreadId
+      })
     }
     this.projectionStore.deleteThread(normalizedThreadId)
 
-    // 清理 context.db 中的相关数据
-    if (this.contextPruner?.deleteThread) {
-      this.contextPruner.deleteThread(normalizedThreadId)
-    }
+    // context.db is physically cleaned by the durable background deletion job.
   }
 
   addMessage(

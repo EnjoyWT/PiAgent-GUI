@@ -3,6 +3,7 @@ import type { ChatMessageContent } from '@shared/chat-content'
 import { getCoreV2Service } from '../core-v2/sqlite-db.ts'
 import {
   deleteWorkspaceSandboxGrant,
+  listPendingThreadDeletions,
   listWorkspaceSandboxGrants,
   upsertWorkspaceSandboxGrant
 } from '../db/config-db.ts'
@@ -12,6 +13,7 @@ import {
   readProjectSandboxManifest
 } from '../sandbox/workspace-sandbox.ts'
 import { getLocalThreadHostService } from '../core-v2/local-thread-host.ts'
+import { enqueueThreadDeletion } from '../core-v2/thread-deletion-service.ts'
 import {
   getLocalConversationByThreadId,
   listLocalThreadRows
@@ -90,7 +92,10 @@ export function setupCoreV2Handlers(): void {
   ipcMain.handle('core-v2:conversations:get-local-by-thread', (_, threadId: string) =>
     getLocalConversationByThreadId(threadId)
   )
-  ipcMain.handle('core-v2:conversations:list-local-thread-rows', () => listLocalThreadRows())
+  ipcMain.handle('core-v2:conversations:list-local-thread-rows', () => {
+    const pending = new Set(listPendingThreadDeletions())
+    return listLocalThreadRows().filter((thread) => !pending.has(thread.id))
+  })
   ipcMain.handle('core-v2:conversations:list-windows', (_, sourceKind?: 'local' | 'im' | 'all') =>
     getCoreV2Service().listConversationWindows(sourceKind ?? 'all')
   )
@@ -110,9 +115,7 @@ export function setupCoreV2Handlers(): void {
     'core-v2:local-threads:generate-title',
     (_, input: GenerateConversationTitleInput) => generateConversationTitle(input)
   )
-  ipcMain.handle('core-v2:local-threads:delete', (_, id: string) => {
-    return getLocalThreadHostService().then((host) => host.deleteThread(id))
-  })
+  ipcMain.handle('core-v2:local-threads:delete', (_, id: string) => enqueueThreadDeletion(id))
   ipcMain.handle(
     'core-v2:local-threads:get-user-chat-ordinal',
     (_, threadId: string, messageId: string) =>

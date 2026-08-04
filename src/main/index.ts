@@ -52,6 +52,7 @@ import {
 import { getImDoctorPlane } from './im/im-doctor-plane-singleton.ts'
 import { notifyRunFinishedIfNeeded } from './runtime/run-finished-notifier.ts'
 import { startAgentPluginBackgroundExtensions } from './agent-plugins/agent-plugin-background-service.ts'
+import { resumePendingThreadDeletions } from './core-v2/thread-deletion-service.ts'
 
 let mainWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
@@ -491,6 +492,7 @@ app.whenReady().then(async () => {
   setupScheduledTaskHandlers()
   setupWebFetchHandlers()
   setupAppUpdateHandlers()
+  resumePendingThreadDeletions()
 
   if (!isE2EMode) {
     try {

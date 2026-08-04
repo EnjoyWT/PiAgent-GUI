@@ -13,7 +13,10 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve('src/main/index.ts'),
-          'worker-host-entry': resolve('src/main/subagents/worker-host-entry.ts')
+          'worker-host-entry': resolve('src/main/subagents/worker-host-entry.ts'),
+          'thread-deletion-worker-entry': resolve(
+            'src/main/core-v2/thread-deletion-worker-entry.ts'
+          )
         }
       },
       externalizeDeps: {

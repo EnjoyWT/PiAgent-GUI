@@ -1368,21 +1368,31 @@ const deleteWorkspaceByPath = async (workspacePath: string): Promise<void> => {
 const deleteThreadById = async (id: string): Promise<void> => {
   const deletingActive = activeThread.value?.id === id
   const activeWorkspacePath = deletingActive ? (activeThread.value?.workspace_path ?? null) : null
-  await window.api.coreV2.localThreads.delete(id)
+  const previousThreads = threads.value
+  const nextThreads = previousThreads.filter((thread) => thread.id !== id)
+  if (nextThreads.length === previousThreads.length) return
+
+  pruneThreadLocalState(id)
+  threads.value = nextThreads
+  if (deletingActive) {
+    const next =
+      (activeWorkspacePath
+        ? nextThreads.find((thread) => thread.workspace_path === activeWorkspacePath)
+        : null) ?? nextThreads[0]
+    if (next) await switchThread(next)
+    else resetActiveThreadState(activeWorkspacePath ?? workspaces.value[0]?.path ?? '')
+  }
+
   try {
     await window.api.runtime.disposeThread(id)
+    await window.api.coreV2.localThreads.delete(id)
   } catch {
-    // ignore
+    threads.value = await loadLocalThreadRows()
+    await globalDialog.alert({
+      title: '删除失败',
+      message: '会话未能加入删除队列，已恢复到列表中。'
+    })
   }
-  pruneThreadLocalState(id)
-  threads.value = await loadLocalThreadRows()
-  if (!deletingActive) return
-  const next =
-    (activeWorkspacePath
-      ? threads.value.find((s) => s.workspace_path === activeWorkspacePath)
-      : null) ?? threads.value[0]
-  if (next) await switchThread(next)
-  else resetActiveThreadState(activeWorkspacePath ?? workspaces.value[0]?.path ?? '')
 }
 
 onUnmounted(() => {

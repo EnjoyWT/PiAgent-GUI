@@ -1,9 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import Database from 'better-sqlite3'
 import { SqliteCoreService } from '../../../src/main/core-v2/sqlite-core-service.ts'
 import { deriveBindingRoutingKey } from '../../../src/main/core-v2/domain.ts'
 import { reconcileInterruptedRunsOnStartup } from '../../../src/main/core-v2/startup-run-recovery.ts'
+import { migrateContextSchema } from '../../../src/main/context/context-db.ts'
+import { runThreadDeletionWorker } from '../../../src/main/core-v2/thread-deletion-worker-entry.ts'
 
 const createService = () => {
   const db = new Database(':memory:')
@@ -484,6 +489,155 @@ test('sqlite service can resolve and delete conversation by routing key', (t) =>
   assert.equal(deleted, true)
   assert.equal(afterDelete, null)
   assert.equal(service.listConversationWindows('local').length, 0)
+})
+
+test('sqlite service schedules a local conversation deletion atomically', (t) => {
+  const { db, service, profile } = createService()
+  t.after(() => db.close())
+
+  const resolved = service.resolveConversationForEnvelope({
+    agentProfileId: profile.id,
+    envelope: {
+      envelopeId: 'env-delete-job-1',
+      transportId: 'desktop-chat',
+      transportAccountId: 'desktop',
+      externalMessageId: 'msg-delete-job-1',
+      externalChatId: 'local-delete-job-1',
+      channelKind: 'dm',
+      receivedAt: new Date('2026-08-03T10:00:00.000Z').toISOString(),
+      text: 'delete me later'
+    },
+    desktopVisibilityMode: 'read_write'
+  })
+
+  assert.equal(
+    service.scheduleConversationDeletion({
+      conversationId: resolved.conversation.id,
+      threadId: 'local-delete-job-1'
+    }),
+    true
+  )
+  assert.equal(service.getConversation(resolved.conversation.id)?.desktopVisibilityMode, 'hidden')
+  assert.deepEqual(service.listThreadDeletionJobs(), [
+    {
+      conversationId: resolved.conversation.id,
+      threadId: 'local-delete-job-1',
+      status: 'queued',
+      lastError: null
+    }
+  ])
+  assert.equal(service.listConversationWindows('local').length, 1)
+})
+
+test('deletion worker physically removes a queued or interrupted conversation outside the main service', async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'piagent-thread-deletion-'))
+  const coreDbPath = join(directory, 'core-v2.db')
+  const contextDbPath = join(directory, 'context.db')
+  const db = new Database(coreDbPath)
+  const service = new SqliteCoreService(db)
+  const profile = service.upsertAgentProfile({
+    id: 'default',
+    slug: 'default',
+    displayName: 'Default',
+    isDefault: true,
+    defaultExecutionPolicy: {
+      model: { providerId: 'openai', modelId: 'gpt-5.4', reasoningLevel: 'medium' },
+      contextEngineId: 'summary',
+      memoryProviderId: 'local-facts',
+      toolProfileId: 'default',
+      sandboxPolicyId: 'workspace-write'
+    }
+  })
+  const contextDb = new Database(contextDbPath)
+  migrateContextSchema(contextDb)
+  t.after(() => {
+    contextDb.close()
+    db.close()
+    rmSync(directory, { recursive: true, force: true })
+  })
+
+  const resolved = service.resolveConversationForEnvelope({
+    agentProfileId: profile.id,
+    envelope: {
+      envelopeId: 'env-worker-delete-1',
+      transportId: 'desktop-chat',
+      transportAccountId: 'desktop',
+      externalMessageId: 'msg-worker-delete-1',
+      externalChatId: 'local-worker-delete-1',
+      channelKind: 'dm',
+      receivedAt: new Date('2026-08-03T10:00:00.000Z').toISOString(),
+      text: 'delete me later'
+    },
+    desktopVisibilityMode: 'read_write'
+  })
+  service.scheduleConversationDeletion({
+    conversationId: resolved.conversation.id,
+    threadId: 'local-worker-delete-1'
+  })
+  db.prepare(`UPDATE thread_deletion_jobs SET status = 'running' WHERE conversation_id = ?`).run(
+    resolved.conversation.id
+  )
+  contextDb
+    .prepare(
+      `INSERT INTO context_entries (id, thread_id, seq, source_kind, role, semantic_kind) VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    .run('context-worker-delete-1', 'local-worker-delete-1', 1, 'message', 'user', 'chat')
+
+  assert.equal(await runThreadDeletionWorker({ coreDbPath, contextDbPath }), true)
+  assert.equal(service.getConversation(resolved.conversation.id), null)
+  assert.deepEqual(service.listThreadDeletionJobs(), [])
+  const contextCount = contextDb
+    .prepare(`SELECT COUNT(*) AS count FROM context_entries WHERE thread_id = ?`)
+    .get('local-worker-delete-1') as { count: number }
+  assert.equal(contextCount.count, 0)
+})
+
+test('maintenance worker removes historical streaming deltas but keeps final run records', async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'piagent-runtime-event-cleanup-'))
+  const coreDbPath = join(directory, 'core-v2.db')
+  const contextDbPath = join(directory, 'context.db')
+  const db = new Database(coreDbPath)
+  const service = new SqliteCoreService(db)
+  const contextDb = new Database(contextDbPath)
+  migrateContextSchema(contextDb)
+  t.after(() => {
+    contextDb.close()
+    db.close()
+    rmSync(directory, { recursive: true, force: true })
+  })
+
+  for (let index = 0; index < 501; index += 1) {
+    service.upsertEventLogEntry({
+      id: `event-agentMessageDelta-${index}`,
+      eventType: 'agentMessageDelta',
+      traceId: 'trace-runtime-cleanup-1',
+      correlationId: 'run-runtime-cleanup-1',
+      aggregateType: 'agent_run',
+      aggregateId: 'run-runtime-cleanup-1',
+      payload: { index }
+    })
+  }
+  for (const eventType of [
+    'agentMessageThinkingDelta',
+    'agentToolCallProgress',
+    'agent.run.upserted'
+  ]) {
+    service.upsertEventLogEntry({
+      id: `event-${eventType}`,
+      eventType,
+      traceId: 'trace-runtime-cleanup-1',
+      correlationId: 'run-runtime-cleanup-1',
+      aggregateType: 'agent_run',
+      aggregateId: 'run-runtime-cleanup-1',
+      payload: { eventType }
+    })
+  }
+
+  assert.equal(await runThreadDeletionWorker({ coreDbPath, contextDbPath }), true)
+  assert.deepEqual(
+    service.listEventLog().map((entry) => entry.eventType),
+    ['agent.run.upserted']
+  )
 })
 
 test('sqlite service deletes conversation messages and prunes runtime after cutoff', (t) => {

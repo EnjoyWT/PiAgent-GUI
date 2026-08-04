@@ -44,7 +44,8 @@ import type {
   UpsertConversationMessageInput,
   UpsertEventLogEntryInput,
   UpsertThreadPlanStateInput,
-  UpsertAgentProfileInput
+  UpsertAgentProfileInput,
+  ThreadDeletionJob
 } from './domain.ts'
 import {
   createExecutionSnapshot,
@@ -91,6 +92,7 @@ type CoreState = {
   interactions: Map<string, InteractionCheckpoint>
   deliveriesByConversationId: Map<string, DeliveryRecord[]>
   threadPlanStates: Map<string, ThreadPlanState>
+  threadDeletionJobs: Map<string, ThreadDeletionJob>
   eventLog: EventLogEntry[]
   nextSequence: number
 }
@@ -107,6 +109,7 @@ export class InMemoryCoreService implements CoreCommandService, CoreQueryService
     interactions: new Map(),
     deliveriesByConversationId: new Map(),
     threadPlanStates: new Map(),
+    threadDeletionJobs: new Map(),
     eventLog: [],
     nextSequence: 0
   }
@@ -892,6 +895,7 @@ export class InMemoryCoreService implements CoreCommandService, CoreQueryService
     if (!existing) return false
 
     this.state.conversations.delete(input.conversationId)
+    this.state.threadDeletionJobs.delete(input.conversationId)
     this.state.messagesByConversationId.delete(input.conversationId)
     this.state.deliveriesByConversationId.delete(input.conversationId)
 
@@ -937,6 +941,30 @@ export class InMemoryCoreService implements CoreCommandService, CoreQueryService
     return true
   }
 
+  scheduleConversationDeletion(input: { conversationId: string; threadId: string }): boolean {
+    const conversation = this.state.conversations.get(input.conversationId)
+    const threadId = String(input.threadId ?? '').trim()
+    if (!conversation || !threadId) return false
+    this.state.conversations.set(input.conversationId, {
+      ...conversation,
+      desktopVisibilityMode: 'hidden',
+      updatedAt: asCoreTimestamp()
+    })
+    if (!this.state.threadDeletionJobs.has(input.conversationId)) {
+      this.state.threadDeletionJobs.set(input.conversationId, {
+        conversationId: input.conversationId,
+        threadId,
+        status: 'queued',
+        lastError: null
+      })
+    }
+    return true
+  }
+
+  listThreadDeletionJobs(): ThreadDeletionJob[] {
+    return [...this.state.threadDeletionJobs.values()].map((job) => ({ ...job }))
+  }
+
   pruneOldEventLog(retentionDays: number = 30): number {
     const cutoffDate = new Date()
     cutoffDate.setDate(cutoffDate.getDate() - retentionDays)
@@ -947,7 +975,11 @@ export class InMemoryCoreService implements CoreCommandService, CoreQueryService
     return beforeCount - this.state.eventLog.length
   }
 
-  getEventLogStats(): { totalCount: number; oldestEntry: string | null; newestEntry: string | null } {
+  getEventLogStats(): {
+    totalCount: number
+    oldestEntry: string | null
+    newestEntry: string | null
+  } {
     if (this.state.eventLog.length === 0) {
       return { totalCount: 0, oldestEntry: null, newestEntry: null }
     }
@@ -1065,7 +1097,9 @@ export class InMemoryCoreService implements CoreCommandService, CoreQueryService
   }
 
   searchConversationMessages(input: ConversationSearchInput): ConversationSearchResult {
-    const query = String(input.query ?? '').trim().toLowerCase()
+    const query = String(input.query ?? '')
+      .trim()
+      .toLowerCase()
     const limit = Math.max(1, Math.min(Math.trunc(input.limit ?? 50), 100))
     const offset = Math.max(0, Math.trunc(input.offset ?? 0))
     if (query.length < 2) return { items: [], total: 0, limit, offset, hasMore: false }
@@ -1083,7 +1117,8 @@ export class InMemoryCoreService implements CoreCommandService, CoreQueryService
       const threadId = binding?.externalChatId ?? conversationId
       if (input.threadId && input.threadId !== threadId) continue
       for (const message of messages) {
-        if (message.role !== 'user' && message.role !== 'assistant' && message.role !== 'tool') continue
+        if (message.role !== 'user' && message.role !== 'assistant' && message.role !== 'tool')
+          continue
         if (roles.size > 0 && !roles.has(message.role)) continue
         const text = message.text ?? ''
         const title = conversation.title ?? ''
@@ -1103,9 +1138,17 @@ export class InMemoryCoreService implements CoreCommandService, CoreQueryService
         })
       }
     }
-    items.sort((left, right) => left.rank - right.rank || right.createdAt.localeCompare(left.createdAt))
+    items.sort(
+      (left, right) => left.rank - right.rank || right.createdAt.localeCompare(left.createdAt)
+    )
     const page = items.slice(offset, offset + limit)
-    return { items: page, total: items.length, limit, offset, hasMore: offset + page.length < items.length }
+    return {
+      items: page,
+      total: items.length,
+      limit,
+      offset,
+      hasMore: offset + page.length < items.length
+    }
   }
 
   listConversationMessagesPage(
@@ -1411,11 +1454,11 @@ export class InMemoryCoreService implements CoreCommandService, CoreQueryService
           (conversation.activeBindingId
             ? (this.state.bindings.get(conversation.activeBindingId) ?? null)
             : null) ??
-          [...this.state.bindings.values()].find((item) => item.conversationId === conversation.id) ??
+          [...this.state.bindings.values()].find(
+            (item) => item.conversationId === conversation.id
+          ) ??
           null
-        const sourceKind = binding
-          ? deriveConversationSourceKind(binding.transportId)
-          : 'local'
+        const sourceKind = binding ? deriveConversationSourceKind(binding.transportId) : 'local'
         if (sourceKind !== input.sourceKind) continue
       }
 
@@ -1441,9 +1484,7 @@ export class InMemoryCoreService implements CoreCommandService, CoreQueryService
         ? (this.state.agentRuns.get(conversation.lastRunId) ?? null)
         : null
 
-      const sourceKind = binding
-        ? deriveConversationSourceKind(binding.transportId)
-        : 'local'
+      const sourceKind = binding ? deriveConversationSourceKind(binding.transportId) : 'local'
 
       items.push({
         conversationId: conversation.id,
@@ -1451,7 +1492,8 @@ export class InMemoryCoreService implements CoreCommandService, CoreQueryService
         status: conversation.status,
         sourceKind,
         primaryTransportId: binding?.transportId ?? null,
-        primaryExternalLabel: (binding?.externalUserId as string | null | undefined) ??
+        primaryExternalLabel:
+          (binding?.externalUserId as string | null | undefined) ??
           (binding?.externalChatId as string | null | undefined) ??
           (conversation.title as string | null | undefined) ??
           null,
@@ -1463,8 +1505,10 @@ export class InMemoryCoreService implements CoreCommandService, CoreQueryService
       })
     }
 
-    items.sort((left, right) =>
-      right.updatedAt.localeCompare(left.updatedAt) || right.conversationId.localeCompare(left.conversationId)
+    items.sort(
+      (left, right) =>
+        right.updatedAt.localeCompare(left.updatedAt) ||
+        right.conversationId.localeCompare(left.conversationId)
     )
 
     const page = items.slice(offset, offset + limit)
@@ -1490,8 +1534,9 @@ export class InMemoryCoreService implements CoreCommandService, CoreQueryService
     })
 
     // Sort by created_at ASC
-    filtered.sort((left, right) =>
-      left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)
+    filtered.sort(
+      (left, right) =>
+        left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)
     )
 
     const page = filtered.slice(offset, offset + limit)
@@ -1513,7 +1558,9 @@ export class InMemoryCoreService implements CoreCommandService, CoreQueryService
     }
   }
 
-  listAllConversationMessages(input: ListAllConversationMessagesInput): ListAllConversationMessagesResult {
+  listAllConversationMessages(
+    input: ListAllConversationMessagesInput
+  ): ListAllConversationMessagesResult {
     const limit = Math.max(1, Math.min(Math.trunc(input.limit ?? 50), 200))
     const offset = Math.max(0, Math.trunc(input.offset ?? 0))
 
@@ -1539,9 +1586,10 @@ export class InMemoryCoreService implements CoreCommandService, CoreQueryService
     }
 
     // Sort by created_at ASC
-    allMessages.sort((left, right) =>
-      left.message.createdAt.localeCompare(right.message.createdAt) ||
-      left.message.id.localeCompare(right.message.id)
+    allMessages.sort(
+      (left, right) =>
+        left.message.createdAt.localeCompare(right.message.createdAt) ||
+        left.message.id.localeCompare(right.message.id)
     )
 
     const page = allMessages.slice(offset, offset + limit)

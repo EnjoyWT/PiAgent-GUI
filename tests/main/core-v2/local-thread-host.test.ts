@@ -151,8 +151,7 @@ test('local thread host writes and deletes messages through core-v2 and projecti
     title: 'newchat'
   })
 
-  const message = host.addMessage(thread.id, 'user', 'hello', null, null, {
-  })
+  const message = host.addMessage(thread.id, 'user', 'hello', null, null, {})
   const updated = host.updateUserMessageRuntimeLink(message.id, {
     agentRunId: 'run-1',
     runtimeSequence: 3
@@ -174,6 +173,38 @@ test('local thread host writes and deletes messages through core-v2 and projecti
   assert.equal(projection.store.messages.size, 0)
 })
 
+test('local thread host hides a deleted thread and schedules physical cleanup', () => {
+  const core = createCore()
+  const projection = createProjectionStore()
+  const host = new LocalThreadHostService({
+    core,
+    projectionStore: projection.api,
+    resolveAgentProfileId: () => 'default'
+  })
+
+  const thread = host.createThread({
+    workspacePath: '/tmp/repo-delete',
+    model: 'openai::gpt-5.4',
+    title: 'delete me'
+  })
+  const match = core.getConversationByBindingRoutingKey(`desktop-chat:desktop:${thread.id}:-:dm`)
+
+  host.deleteThread(thread.id)
+
+  const deleted = core.getConversationByBindingRoutingKey(`desktop-chat:desktop:${thread.id}:-:dm`)
+
+  assert.equal(projection.store.threads.has(thread.id), false)
+  assert.equal(deleted?.conversation.desktopVisibilityMode, 'hidden')
+  assert.deepEqual(core.listThreadDeletionJobs(), [
+    {
+      conversationId: match!.conversation.id,
+      threadId: thread.id,
+      status: 'queued',
+      lastError: null
+    }
+  ])
+})
+
 test('local thread host reuses the same user row for repeated submission persistence', () => {
   const core = createCore()
   const projection = createProjectionStore()
@@ -188,8 +219,7 @@ test('local thread host reuses the same user row for repeated submission persist
     model: 'openai::gpt-5.4',
     title: 'newchat'
   })
-  const first = host.addMessage(thread.id, 'user', 'hello', null, null, {
-  })
+  const first = host.addMessage(thread.id, 'user', 'hello', null, null, {})
   const second = host.addMessage(thread.id, 'user', 'hello', 'run-1', null, {
     agentTurnId: 'turn-1',
     runtimeSequence: 19,

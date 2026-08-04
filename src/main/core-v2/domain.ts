@@ -5,42 +5,32 @@ export type ReasoningLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xh
 
 export type ConversationStatus = 'active' | 'archived'
 
+export type ThreadDeletionJobStatus = 'queued' | 'running' | 'failed'
+
+export type ThreadDeletionJob = {
+  conversationId: string
+  threadId: string
+  status: ThreadDeletionJobStatus
+  lastError: string | null
+}
+
 export type DesktopVisibilityMode = 'hidden' | 'readonly' | 'read_write'
 
 export type ConversationChannelKind = 'dm' | 'group' | 'thread' | 'webhook' | 'api'
 
 export type ConversationSessionScope =
-  | 'dm'
-  | 'group_shared'
-  | 'group_per_member'
-  | 'thread_shared'
-  | 'thread_per_member'
+  'dm' | 'group_shared' | 'group_per_member' | 'thread_shared' | 'thread_per_member'
 
 export type ConversationSourceKind = 'local' | 'im'
 
 export type AgentInstanceStatus =
-  | 'idle'
-  | 'acquiring'
-  | 'running'
-  | 'waiting_interaction'
-  | 'draining'
-  | 'disposed'
-  | 'failed'
+  'idle' | 'acquiring' | 'running' | 'waiting_interaction' | 'draining' | 'disposed' | 'failed'
 
 export type AgentRunStatus =
-  | 'requested'
-  | 'running'
-  | 'waiting_interaction'
-  | 'finished'
-  | 'failed'
-  | 'aborted'
+  'requested' | 'running' | 'waiting_interaction' | 'finished' | 'failed' | 'aborted'
 
 export type InteractionKind =
-  | 'approval'
-  | 'option_select'
-  | 'text_input'
-  | 'multi_step_form'
-  | 'file_upload_request'
+  'approval' | 'option_select' | 'text_input' | 'multi_step_form' | 'file_upload_request'
 
 export type DeliveryMode = 'send' | 'edit' | 'append' | 'typing' | 'upload'
 
@@ -153,10 +143,7 @@ export type AgentInstance = {
   loadedAt: string
   lastActiveAt: string
   lastReloadReason?:
-    | 'execution_policy_change'
-    | 'context_compaction'
-    | 'provider_failover'
-    | 'manual'
+    'execution_policy_change' | 'context_compaction' | 'provider_failover' | 'manual'
 }
 
 export type AgentRun = {
@@ -590,6 +577,7 @@ export interface CoreCommandService {
   clearThreadPlanState(threadId: string): boolean
   deleteConversationMessage(input: DeleteConversationMessageInput): boolean
   pruneConversationRuntimeAfter(input: PruneConversationRuntimeAfterInput): void
+  scheduleConversationDeletion(input: { conversationId: string; threadId: string }): boolean
   deleteConversation(input: DeleteConversationInput): boolean
   pruneOldEventLog(retentionDays?: number): number
   getEventLogStats(): { totalCount: number; oldestEntry: string | null; newestEntry: string | null }
@@ -598,6 +586,7 @@ export interface CoreCommandService {
 export interface CoreQueryService {
   getAgentProfile(id: string): AgentProfile | null
   getConversation(id: string): Conversation | null
+  listThreadDeletionJobs(): ThreadDeletionJob[]
   getConversationBinding(id: string): ConversationBinding | null
   listConversationBindings(options?: {
     conversationId?: string | null
@@ -627,7 +616,9 @@ export interface CoreQueryService {
   listEventLogByAggregateKeys(keys: EventLogAggregateKey[]): EventLogEntry[]
   listConversations(input: ListConversationsInput): ListConversationsResult
   listConversationMessages(input: ListConversationMessagesInput): ListConversationMessagesResult
-  listAllConversationMessages(input: ListAllConversationMessagesInput): ListAllConversationMessagesResult
+  listAllConversationMessages(
+    input: ListAllConversationMessagesInput
+  ): ListAllConversationMessagesResult
 }
 
 export const mergeExecutionPolicy = (

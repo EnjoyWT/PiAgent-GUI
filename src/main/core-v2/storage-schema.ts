@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 
-export const CORE_V2_SCHEMA_VERSION = 11
+export const CORE_V2_SCHEMA_VERSION = 12
 
 export function getCoreV2SchemaVersion(db: Database.Database): number {
   return db.pragma('user_version', { simple: true }) as number
@@ -22,6 +22,7 @@ export function migrateCoreV2Schema(db: Database.Database): void {
       initAgentRunProjectionSchema(db)
       initScheduledTasksSchema(db)
       initConversationSearchFtsSchema(db)
+      initThreadDeletionJobsSchema(db)
       setCoreV2SchemaVersion(db, CORE_V2_SCHEMA_VERSION)
       return
     }
@@ -66,10 +67,31 @@ export function migrateCoreV2Schema(db: Database.Database): void {
       migrateConversationSearchFtsSchemaV11(db)
     }
 
+    if (currentVersion < 12) {
+      initThreadDeletionJobsSchema(db)
+    }
+
     setCoreV2SchemaVersion(db, CORE_V2_SCHEMA_VERSION)
   })
 
   migrate()
+}
+
+export function initThreadDeletionJobsSchema(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS thread_deletion_jobs (
+      conversation_id TEXT PRIMARY KEY,
+      thread_id TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'failed')),
+      last_error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_thread_deletion_jobs_status_created
+      ON thread_deletion_jobs(status, created_at);
+  `)
 }
 
 export function initCoreV2Schema(db: Database.Database): void {
