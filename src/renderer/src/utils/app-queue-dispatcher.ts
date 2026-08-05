@@ -747,6 +747,7 @@ export const useQueueDispatcher = (options: QueueDispatcherOptions): QueueDispat
 
     if (status === 'aborted') {
       resetQueueControllerAfterAbort(controller)
+      options.refineThreadTitleAfterRun({ threadId, status })
       return
     }
 
