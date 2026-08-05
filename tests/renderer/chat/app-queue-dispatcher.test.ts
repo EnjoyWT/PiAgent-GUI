@@ -129,3 +129,71 @@ test('aborting a first run clears its pending title refinement before a later ru
   ])
   assert.deepEqual(generatedTitles, [])
 })
+
+test('aborted title cleanup runs before its async refresh lets a later run settle', async () => {
+  const generatedTitles: string[] = []
+  const coordinator = createThreadTitleCoordinator({
+    buildFallbackTitle: () => '首条消息',
+    generateTitle: async ({ text }) => {
+      generatedTitles.push(text)
+      return '精炼标题'
+    },
+    persistTitle: async () => {},
+    getCurrentTitle: () => '首条消息',
+    isThreadIdle: () => true
+  })
+  coordinator.reserve({ threadId: 'thread-1', currentTitle: 'newchat', text: '首条消息' })
+
+  let releaseAbortedRefresh: (() => void) | undefined
+  const abortedRefresh = new Promise<void>((resolve) => {
+    releaseAbortedRefresh = resolve
+  })
+  let queueRefreshCount = 0
+
+  Object.assign(globalThis, {
+    window: {
+      api: {
+        runtime: {
+          getQueuedMessages: async () => {
+            queueRefreshCount += 1
+            if (queueRefreshCount === 1) await abortedRefresh
+            return []
+          }
+        }
+      }
+    }
+  })
+
+  const dispatcher = useQueueDispatcher({
+    activeThread: ref(null),
+    messages: ref([]),
+    inputText: ref(''),
+    composerAttachments: ref([]),
+    currentModelSupportsImageInput: computed(() => true),
+    runtimeStatus: ref({ text: '', tone: 'idle' as const }),
+    runtimeBinding: ref(null),
+    activeRunByThreadId: new Map(),
+    getAgentRunMap: () => new Map(),
+    getThreadRowById: () => null,
+    reserveThreadTitleFromText: () => {},
+    refineThreadTitleAfterRun: (input) => {
+      void coordinator.refineAfterRun(input)
+    },
+    ensureThreadStarted: async (thread) => thread,
+    ensureMessageBuffer: () => [],
+    setThreadStreaming: () => {},
+    scrollToBottom: () => {},
+    loadLatestThreadWindow: async () => {},
+    confirmTextOnlyFallback: async () => true,
+    isStreaming: computed(() => false)
+  })
+
+  const abortedSettled = dispatcher.onRunSettled('thread-1', 'run-1', 'aborted')
+  assert.equal(queueRefreshCount, 1)
+
+  await dispatcher.onRunSettled('thread-1', 'run-2', 'finished')
+  releaseAbortedRefresh?.()
+  await abortedSettled
+
+  assert.deepEqual(generatedTitles, [])
+})

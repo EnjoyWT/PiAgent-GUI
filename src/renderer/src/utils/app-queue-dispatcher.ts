@@ -689,6 +689,10 @@ export const useQueueDispatcher = (options: QueueDispatcherOptions): QueueDispat
   }
 
   const onRunSettled = async (threadId: string, runId: string, status: string): Promise<void> => {
+    if (status === 'aborted') {
+      options.refineThreadTitleAfterRun({ threadId, status })
+    }
+
     const controller = ensureQueueController(threadId)
     if (controller.activeRunId !== null && controller.activeRunId !== runId) {
       if (status !== 'aborted') return
@@ -747,7 +751,6 @@ export const useQueueDispatcher = (options: QueueDispatcherOptions): QueueDispat
 
     if (status === 'aborted') {
       resetQueueControllerAfterAbort(controller)
-      options.refineThreadTitleAfterRun({ threadId, status })
       return
     }
 
