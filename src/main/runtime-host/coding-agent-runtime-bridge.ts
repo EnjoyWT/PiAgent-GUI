@@ -107,6 +107,10 @@ import {
   type RuntimeToolResolution
 } from './runtime-tool-layer/runtime-tool-resolver.ts'
 import {
+  createRuntimeCapabilityState,
+  type RuntimeCapabilityState
+} from './runtime-tool-layer/runtime-capability-state.ts'
+import {
   createCapabilityActivateTool,
   createCapabilitySearchTool
 } from '../tools/runtime-capability-tools.ts'
@@ -198,6 +202,19 @@ const uniqueToolDefinitions = (tools: ToolDefinition[]): ToolDefinition[] => {
   }
   return [...byName.values()]
 }
+
+const estimateToolSchemaTokens = (parameters: unknown): number =>
+  Math.max(1, Math.ceil(JSON.stringify(parameters ?? {}).length / 4))
+
+const capabilitySourceVersions = (
+  catalog: RuntimeToolCatalogEntry[]
+): Record<string, string> =>
+  Object.fromEntries(
+    catalog.map((entry) => [
+      entry.name,
+      `${entry.source}:${JSON.stringify(entry.parameters ?? {})}`
+    ])
+  )
 
 export const buildAgentSessionToolAllowlist = (
   resolution: Pick<RuntimeToolResolution, 'activeToolNames'>
@@ -467,6 +484,7 @@ export class CodingAgentRuntimeBridge {
   private modelRuntime: ModelRuntime | null = null
   private modelRuntimeInit: Promise<ModelRuntime> | null = null
   private readonly sessionsByConversationId = new Map<string, HeadlessRuntimeSession>()
+  private readonly capabilityStateByConversationId = new Map<string, RuntimeCapabilityState>()
   private readonly abortRequestedConversationIds = new Set<string>()
   private readonly providerGenerationById = new Map<string, number>()
   private readonly conversationIdByInteractionThreadId = new Map<string, string>()
@@ -653,6 +671,7 @@ export class CodingAgentRuntimeBridge {
     if (!existing) return
     this.disposeSession(existing)
     this.sessionsByConversationId.delete(resolvedConversationId)
+    this.capabilityStateByConversationId.delete(resolvedConversationId)
     this.activeRunByConversationId.delete(resolvedConversationId)
     this.forgetInteractionThreadMapping(resolvedConversationId)
   }
@@ -695,6 +714,7 @@ export class CodingAgentRuntimeBridge {
       this.disposeSession(session)
     }
     this.sessionsByConversationId.clear()
+    this.capabilityStateByConversationId.clear()
     this.conversationIdByInteractionThreadId.clear()
     this.interactionThreadIdByConversationId.clear()
     this.activeRunByConversationId.clear()
@@ -1258,6 +1278,7 @@ export class CodingAgentRuntimeBridge {
       activeToolNames: buildAgentSessionToolAllowlist(resolution)
     }
     let liveSession: RuntimeSession | null = null
+    let capabilityState: RuntimeCapabilityState | null = null
     const capabilitySearchTool = createCapabilitySearchTool({
       getCatalog: () => runtimeToolState.catalog
     })
@@ -1278,10 +1299,25 @@ export class CodingAgentRuntimeBridge {
           accepted.push(name)
         }
         if (accepted.length === 0) return { activated: [], rejected }
+        capabilityState?.activate(
+          accepted
+            .map((name) => runtimeToolState.catalog.find((entry) => entry.name === name))
+            .filter((entry): entry is RuntimeToolCatalogEntry => Boolean(entry))
+            .map((entry) => ({
+              name: entry.name,
+              schemaTokens: estimateToolSchemaTokens(entry.parameters),
+              sourceVersion: capabilitySourceVersions([entry])[entry.name]
+            })),
+          Date.now()
+        )
         resolution = resolveRuntimeTools(runtimeToolState.registry, {
           surface: runtimeToolState.surface,
           toolProfileId: runtimeToolState.toolProfileId,
-          activeToolNames: [...runtimeToolState.activeToolNames, ...accepted]
+          activeToolNames:
+            capabilityState?.selectForTurn(
+              Date.now(),
+              capabilitySourceVersions(runtimeToolState.catalog)
+            ) ?? [...runtimeToolState.activeToolNames, ...accepted]
         })
         const nextAllowlist = buildAgentSessionToolAllowlist(resolution)
         liveSession?.setActiveToolsByName(nextAllowlist)
@@ -1308,6 +1344,24 @@ export class CodingAgentRuntimeBridge {
       toolProfileId: policy.toolProfileId ?? null
     })
     runtimeToolState.registry = registry
+    runtimeToolState.catalog = buildRuntimeToolCatalog(resolution.entries)
+    runtimeToolState.enabledToolsets = resolution.enabledToolsets
+    capabilityState =
+      this.capabilityStateByConversationId.get(conversation.id) ??
+      createRuntimeCapabilityState({
+        coreToolNames: buildAgentSessionToolAllowlist(resolution),
+        maxToolCount: 8,
+        maxSchemaTokens: 3000
+      })
+    this.capabilityStateByConversationId.set(conversation.id, capabilityState)
+    resolution = resolveRuntimeTools(registry, {
+      surface: surface.sourceKind,
+      toolProfileId: policy.toolProfileId ?? null,
+      activeToolNames: capabilityState.selectForTurn(
+        Date.now(),
+        capabilitySourceVersions(runtimeToolState.catalog)
+      )
+    })
     runtimeToolState.catalog = buildRuntimeToolCatalog(resolution.entries)
     runtimeToolState.enabledToolsets = resolution.enabledToolsets
     const sessionToolAllowlist = buildAgentSessionToolAllowlist(resolution)

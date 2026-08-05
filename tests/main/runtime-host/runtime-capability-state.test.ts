@@ -52,6 +52,18 @@ test('drops a cached capability when its source version changes', () => {
   assert.deepEqual(state.selectForTurn(2, { mcpSearch: 'v2' }), ['read'])
 })
 
+test('drops a cached capability when it is no longer available from the source', () => {
+  const state = createRuntimeCapabilityState({
+    coreToolNames: ['read'],
+    maxToolCount: 2,
+    maxSchemaTokens: 3000
+  })
+
+  state.activate([{ name: 'mcpSearch', schemaTokens: 120, sourceVersion: 'v1' }], 1)
+
+  assert.deepEqual(state.selectForTurn(2, {}), ['read'])
+})
+
 test('increments revision only when the capability set changes', () => {
   const state = createRuntimeCapabilityState({
     coreToolNames: ['read'],

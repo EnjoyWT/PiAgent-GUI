@@ -67,7 +67,7 @@ export const createRuntimeCapabilityState = (
     let changed = false
     for (const [name, lease] of leases) {
       const currentVersion = sourceVersions[name]
-      if (currentVersion !== undefined && currentVersion !== lease.sourceVersion) {
+      if (currentVersion === undefined || currentVersion !== lease.sourceVersion) {
         leases.delete(name)
         changed = true
       }
