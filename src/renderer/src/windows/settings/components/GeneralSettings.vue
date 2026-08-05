@@ -150,6 +150,62 @@
         </div>
       </div>
     </div>
+
+    <div class="bg-(--theme-bg-main) border border-(--theme-border-base) rounded-2xl p-6 shadow-sm space-y-4">
+      <div class="flex items-start justify-between gap-4">
+        <div class="min-w-0 space-y-1">
+          <h3 class="text-lg font-bold text-(--theme-text-bright)">本地数据与存储</h3>
+          <p class="text-sm text-(--theme-text-dim) leading-relaxed">
+            查看本地对话与相关数据库的磁盘占用。
+          </p>
+        </div>
+        <button
+          type="button"
+          class="shrink-0 inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold text-(--theme-accent) hover:bg-(--theme-bg-hover-btn) disabled:cursor-wait disabled:opacity-60"
+          :disabled="isLoadingAppStorage"
+          @click="loadAppStorageSummary"
+        >
+          <Loader2 v-if="isLoadingAppStorage" :size="15" class="animate-spin" />
+          <RefreshCw v-else :size="15" />
+          刷新
+        </button>
+      </div>
+
+      <div v-if="appStorageSummary" class="grid gap-3 sm:grid-cols-2">
+        <div class="rounded-xl bg-(--theme-bg-sidebar) px-4 py-3">
+          <div class="text-xs text-(--theme-text-dim)">对话数据库</div>
+          <div class="mt-1 text-lg font-bold text-(--theme-text-main)">
+            {{ formatBytes(appStorageSummary.conversationDatabase.totalBytes) }}
+          </div>
+        </div>
+        <div class="rounded-xl bg-(--theme-bg-sidebar) px-4 py-3">
+          <div class="text-xs text-(--theme-text-dim)">本地数据库合计</div>
+          <div class="mt-1 text-lg font-bold text-(--theme-text-main)">
+            {{ formatBytes(appStorageSummary.totalBytes) }}
+          </div>
+        </div>
+      </div>
+
+      <div v-if="appStorageSummary" class="min-w-0 space-y-1">
+        <div class="text-xs text-(--theme-text-dim)">数据目录</div>
+        <div
+          class="truncate text-sm text-(--theme-text-main)"
+          :title="appStorageSummary.userDataPath"
+        >
+          {{ appStorageSummary.userDataPath }}
+        </div>
+      </div>
+
+      <p v-if="appStorageError" class="text-xs text-amber-600">
+        {{ appStorageError }}
+      </p>
+      <p v-else-if="appStorageSummary?.unavailable" class="text-xs text-amber-600">
+        部分本地数据暂时无法读取，可点击刷新重试。
+      </p>
+      <p v-else-if="isLoadingAppStorage && !appStorageSummary" class="text-sm text-(--theme-text-dim)">
+        正在读取本地数据占用…
+      </p>
+    </div>
   </div>
 </template>
 
@@ -161,10 +217,12 @@ import {
   ExternalLink,
   FlaskConical,
   Loader2,
+  RefreshCw,
   Search,
   Sparkles
 } from 'lucide-vue-next'
 import { getProviderIconUrl } from '@renderer/utils/providerIcons'
+import type { AppStorageSummary } from '@shared/app-storage'
 
 const props = defineProps<{
   tempRootDir: string
@@ -196,10 +254,37 @@ const testStatus = reactive<{ text: string; tone: 'idle' | 'good' | 'warn' | 'ba
   tone: 'idle'
 })
 const isTestingConnection = ref(false)
+const appStorageSummary = ref<AppStorageSummary | null>(null)
+const appStorageError = ref('')
+const isLoadingAppStorage = ref(false)
 
 const testIconComponent = computed(() => (isTestingConnection.value ? Loader2 : FlaskConical))
 
 const toolModelLabel = computed(() => selectedToolModel.value?.label)
+
+const formatBytes = (bytes: number): string => {
+  if (bytes < 1024) return `${bytes} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let value = bytes / 1024
+  let unitIndex = 0
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex += 1
+  }
+  return `${value.toFixed(value >= 100 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`
+}
+
+const loadAppStorageSummary = async () => {
+  isLoadingAppStorage.value = true
+  appStorageError.value = ''
+  try {
+    appStorageSummary.value = await window.api.appStorage.getSummary()
+  } catch {
+    appStorageError.value = '暂时无法读取本地数据占用，可点击刷新重试。'
+  } finally {
+    isLoadingAppStorage.value = false
+  }
+}
 
 const groupedFilteredToolModels = computed(() => {
   const q = toolModelSearchQuery.value.trim().toLowerCase()
@@ -386,6 +471,7 @@ const openLearnMore = async () => {
 }
 
 onMounted(async () => {
+  void loadAppStorageSummary()
   await loadToolModels()
   await loadToolModelSelection()
   document.addEventListener('mousedown', onGlobalPointerDown, true)
