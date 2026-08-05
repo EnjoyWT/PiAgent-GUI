@@ -73,7 +73,6 @@ const CORE_TOOL_NAMES = new Set([
   'ls',
   'capabilitySearch',
   'capabilityActivate',
-  'skillSearch',
   'readSkillTool'
 ])
 
@@ -98,7 +97,6 @@ const inferToolsets = (
     tool.name === 'discoverBuiltinToolsTool' ||
     tool.name === 'capabilitySearch' ||
     tool.name === 'capabilityActivate' ||
-    tool.name === 'skillSearch' ||
     tool.name === 'readSkillTool'
   ) {
     return ['discovery']
