@@ -205,6 +205,23 @@
       <p v-else-if="isLoadingAppStorage && !appStorageSummary" class="text-sm text-(--theme-text-dim)">
         正在读取本地数据占用…
       </p>
+
+      <div class="border-t border-(--theme-border-base) pt-4">
+        <div class="flex items-center justify-between gap-4">
+          <div class="min-w-0">
+            <div class="text-sm font-semibold text-(--theme-text-main)">清理本地会话</div>
+            <p class="mt-1 text-xs text-(--theme-text-dim)">删除全部桌面本地对话及其上下文，配置和 IM 数据不会受影响。</p>
+          </div>
+          <button
+            type="button"
+            class="shrink-0 h-9 rounded-lg border border-red-500/30 px-3 text-sm font-semibold text-red-600 hover:bg-red-500/10 disabled:opacity-60"
+            :disabled="isCleaningLocalConversations"
+            @click="confirmLocalConversationCleanup"
+          >
+            {{ isCleaningLocalConversations ? '清理中…' : '清理会话' }}
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -223,6 +240,7 @@ import {
 } from 'lucide-vue-next'
 import { getProviderIconUrl } from '@renderer/utils/providerIcons'
 import type { AppStorageSummary } from '@shared/app-storage'
+import { globalDialog } from '../../../utils/dialog'
 
 const props = defineProps<{
   tempRootDir: string
@@ -257,6 +275,7 @@ const isTestingConnection = ref(false)
 const appStorageSummary = ref<AppStorageSummary | null>(null)
 const appStorageError = ref('')
 const isLoadingAppStorage = ref(false)
+const isCleaningLocalConversations = ref(false)
 
 const testIconComponent = computed(() => (isTestingConnection.value ? Loader2 : FlaskConical))
 
@@ -283,6 +302,31 @@ const loadAppStorageSummary = async () => {
     appStorageError.value = '暂时无法读取本地数据占用，可点击刷新重试。'
   } finally {
     isLoadingAppStorage.value = false
+  }
+}
+
+const confirmLocalConversationCleanup = async () => {
+  const confirmed = await globalDialog.confirm({
+    title: '清理全部本地会话',
+    message: '将永久删除所有桌面本地对话、消息、运行记录和上下文。',
+    detail: '不会删除项目、模型配置、MCP、Skill、知识库、IM 会话或定时任务。',
+    confirmText: '清理全部本地会话',
+    cancelText: '取消',
+    danger: true
+  })
+  if (!confirmed) return
+  isCleaningLocalConversations.value = true
+  try {
+    await window.api.localConversations.cleanup()
+    await loadAppStorageSummary()
+    await globalDialog.alert({ title: '清理完成', message: '本地会话数据已清理并压缩。' })
+  } catch (error) {
+    await globalDialog.alert({
+      title: '清理失败',
+      message: error instanceof Error ? error.message : '本地会话清理失败，请稍后重试。'
+    })
+  } finally {
+    isCleaningLocalConversations.value = false
   }
 }
 

@@ -180,6 +180,9 @@ const api = {
   appStorage: {
     getSummary: (): Promise<AppStorageSummary> => ipcRenderer.invoke('app-storage:get-summary')
   },
+  localConversations: {
+    cleanup: (): Promise<{ cleared: true }> => ipcRenderer.invoke('local-conversations:cleanup')
+  },
   showFileContextMenu: (input: {
     path: string
     threadId?: string | null

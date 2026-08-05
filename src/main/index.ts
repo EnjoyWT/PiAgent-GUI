@@ -40,6 +40,7 @@ import { setupWebFetchHandlers } from './ipc/webfetch-handlers.ts'
 import { setupKnowledgeHandlers } from './ipc/knowledge-handlers'
 import { setupAppUpdateHandlers } from './ipc/app-update-handlers.ts'
 import { setupAppStorageHandlers } from './ipc/app-storage-handlers.ts'
+import { setupLocalConversationCleanupHandlers } from './ipc/local-conversation-cleanup-handlers.ts'
 import { knowledgeCaptureScheduler } from './knowledge/knowledge-capture-scheduler.ts'
 import { knowledgeActiveTaskFinalizeScheduler } from './knowledge/knowledge-active-task-finalize-scheduler.ts'
 import { isThreadKnowledgeCaptureEnabled } from './knowledge/knowledge-settings.ts'
@@ -494,6 +495,7 @@ app.whenReady().then(async () => {
   setupWebFetchHandlers()
   setupAppUpdateHandlers()
   setupAppStorageHandlers()
+  setupLocalConversationCleanupHandlers()
   resumePendingThreadDeletions()
 
   if (!isE2EMode) {
