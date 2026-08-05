@@ -16,6 +16,9 @@ export default defineConfig({
           'worker-host-entry': resolve('src/main/subagents/worker-host-entry.ts'),
           'thread-deletion-worker-entry': resolve(
             'src/main/core-v2/thread-deletion-worker-entry.ts'
+          ),
+          'local-conversation-cleanup-worker-entry': resolve(
+            'src/main/local-conversation-cleanup/worker-entry.ts'
           )
         }
       },

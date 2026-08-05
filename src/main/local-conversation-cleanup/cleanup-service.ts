@@ -8,7 +8,10 @@ let cleanupPromise: Promise<{ cleared: true }> | null = null
 
 export const cleanupLocalConversations = (): Promise<{ cleared: true }> => {
   if (cleanupPromise) return cleanupPromise
-  const entryPath = join(dirname(fileURLToPath(import.meta.url)), 'worker-entry.js')
+  const entryPath = join(
+    dirname(fileURLToPath(import.meta.url)),
+    'local-conversation-cleanup-worker-entry.js'
+  )
   cleanupPromise = new Promise<{ cleared: true }>((resolve, reject) => {
     const worker = fork(entryPath)
     worker.once('error', reject)
