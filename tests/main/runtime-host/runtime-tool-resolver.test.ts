@@ -50,11 +50,11 @@ test('runtime tool resolver blocks local-only tools on IM surfaces while keeping
 
   assert.deepEqual(
     resolution.activeToolNames,
-    ['discoverBuiltinToolsTool', 'imTool', 'read'].filter((name) =>
+    ['discoverBuiltinToolsTool', 'read'].filter((name) =>
       resolution.entries.some((entry) => entry.name === name)
     )
   )
-  assert.equal(resolution.entries.find((entry) => entry.name === 'imTool')?.status, 'active')
+  assert.equal(resolution.entries.find((entry) => entry.name === 'imTool')?.status, 'discoverable')
   assert.equal(resolution.entries.find((entry) => entry.name === 'questionTool')?.status, 'blocked')
   assert.equal(
     resolution.entries.find((entry) => entry.name === 'providerConfigTool')?.status,
@@ -105,7 +105,7 @@ test('runtime tool resolver classifies computerUseTool as local-only computer_us
   )
   assert.equal(
     localResolution.entries.find((entry) => entry.name === 'computerUseTool')?.status,
-    'active'
+    'discoverable'
   )
   assert.equal(
     minimalResolution.entries.find((entry) => entry.name === 'computerUseTool')?.status,
@@ -161,7 +161,7 @@ test('runtime tool resolver classifies computerSystemInfoTool as local-only syst
   )
   assert.equal(
     localResolution.entries.find((entry) => entry.name === 'computerSystemInfoTool')?.status,
-    'active'
+    'discoverable'
   )
   assert.equal(
     minimalResolution.entries.find((entry) => entry.name === 'computerSystemInfoTool')?.status,
@@ -183,4 +183,78 @@ test('runtime tool registry classifies plugin tools under the plugin source and 
   assert.equal(entry?.builtin, false)
   assert.deepEqual(entry?.toolsets, ['plugin'])
   assert.deepEqual(entry?.scopes, ['im', 'local'])
+})
+
+test('default local resolution exposes only core tools and capability meta-tools', () => {
+  const registry = buildRuntimeToolRegistry([
+    {
+      source: 'builtin',
+      tools: [
+        createTool('read', 'Read files'),
+        createTool('bash', 'Run commands'),
+        createTool('edit', 'Edit files'),
+        createTool('write', 'Write files'),
+        createTool('find', 'Find files'),
+        createTool('grep', 'Search files'),
+        createTool('ls', 'List files')
+      ],
+      scopes: ['local', 'im']
+    },
+    {
+      source: 'framework',
+      tools: [
+        createTool('capabilitySearch', 'Discover runtime capabilities'),
+        createTool('capabilityActivate', 'Activate runtime capabilities'),
+        createTool('webSearchTool', 'Search the web')
+      ],
+      scopes: ['local', 'im']
+    }
+  ])
+
+  const resolution = resolveRuntimeTools(registry, { surface: 'local', toolProfileId: 'default' })
+
+  assert.deepEqual(resolution.activeToolNames, [
+    'bash',
+    'capabilityActivate',
+    'capabilitySearch',
+    'edit',
+    'find',
+    'grep',
+    'ls',
+    'read',
+    'write'
+  ])
+  assert.equal(resolution.entries.find((entry) => entry.name === 'webSearchTool')?.status, 'discoverable')
+})
+
+test('resolver preserves core tools when it receives cached active names', () => {
+  const registry = buildRuntimeToolRegistry([
+    {
+      source: 'builtin',
+      tools: [createTool('read', 'Read files'), createTool('bash', 'Run commands')],
+      scopes: ['local', 'im']
+    },
+    {
+      source: 'framework',
+      tools: [
+        createTool('capabilitySearch', 'Discover runtime capabilities'),
+        createTool('capabilityActivate', 'Activate runtime capabilities'),
+        createTool('webSearchTool', 'Search the web')
+      ],
+      scopes: ['local', 'im']
+    }
+  ])
+
+  const resolution = resolveRuntimeTools(registry, {
+    surface: 'local',
+    activeToolNames: ['webSearchTool']
+  })
+
+  assert.deepEqual(resolution.activeToolNames, [
+    'bash',
+    'capabilityActivate',
+    'capabilitySearch',
+    'read',
+    'webSearchTool'
+  ])
 })

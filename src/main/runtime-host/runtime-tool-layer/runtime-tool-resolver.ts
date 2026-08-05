@@ -58,7 +58,8 @@ export const resolveRuntimeTools = (
       ? context.activeToolNames
       : defaultActiveToolNames
   const activeToolNames = uniqueSorted(
-    requestedActiveToolNames
+    defaultActiveToolNames
+      .concat(requestedActiveToolNames)
       .filter((name) => eligibleEntries.some((entry) => entry.name === name))
       .concat(mandatoryToolNames)
   )
