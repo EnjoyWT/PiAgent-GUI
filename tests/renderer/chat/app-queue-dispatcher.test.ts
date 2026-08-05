@@ -69,7 +69,7 @@ test('resetQueueControllerAfterAbort restores idle auto dispatch', () => {
   assert.equal(controller.postRunAction.type, 'none')
 })
 
-test('aborting a first run clears its pending title refinement before a later run finishes', async () => {
+test('aborting a first run clears its pending title refinement before a later run completes', async () => {
   const titleLifecycleCalls: Array<{ threadId: string; status: string }> = []
   const generatedTitles: string[] = []
   const coordinator = createThreadTitleCoordinator({
@@ -120,7 +120,7 @@ test('aborting a first run clears its pending title refinement before a later ru
   })
 
   await dispatcher.onRunSettled('thread-1', 'run-1', 'aborted')
-  await dispatcher.onRunSettled('thread-1', 'run-2', 'finished')
+  await dispatcher.onRunSettled('thread-1', 'run-2', 'done')
   await new Promise((resolve) => setImmediate(resolve))
 
   assert.deepEqual(titleLifecycleCalls, [
@@ -191,14 +191,14 @@ test('aborted title cleanup runs before its async refresh lets a later run settl
   const abortedSettled = dispatcher.onRunSettled('thread-1', 'run-1', 'aborted')
   assert.equal(queueRefreshCount, 1)
 
-  await dispatcher.onRunSettled('thread-1', 'run-2', 'finished')
+  await dispatcher.onRunSettled('thread-1', 'run-2', 'done')
   releaseAbortedRefresh?.()
   await abortedSettled
 
   assert.deepEqual(generatedTitles, [])
 })
 
-test('failed title cleanup runs before its async refresh lets a later run finish', async () => {
+test('runtime error title cleanup runs before its async refresh lets a later run complete', async () => {
   const titleLifecycleCalls: Array<{ threadId: string; status: string }> = []
   const generatedTitles: string[] = []
   const coordinator = createThreadTitleCoordinator({
@@ -217,6 +217,7 @@ test('failed title cleanup runs before its async refresh lets a later run finish
   const failedRefresh = new Promise<void>((resolve) => {
     releaseFailedRefresh = resolve
   })
+  let loadLatestThreadWindowCount = 0
 
   Object.assign(globalThis, {
     window: {
@@ -248,20 +249,29 @@ test('failed title cleanup runs before its async refresh lets a later run finish
     ensureMessageBuffer: () => [],
     setThreadStreaming: () => {},
     scrollToBottom: () => {},
-    loadLatestThreadWindow: async () => failedRefresh,
+    loadLatestThreadWindow: async () => {
+      loadLatestThreadWindowCount += 1
+      if (loadLatestThreadWindowCount === 1) await failedRefresh
+    },
     confirmTextOnlyFallback: async () => true,
     isStreaming: computed(() => false)
   })
 
-  const failedSettled = dispatcher.onRunSettled('thread-1', 'run-1', 'failed')
+  const failedSettled = dispatcher.onRunSettled('thread-1', 'run-1', 'error')
   await new Promise((resolve) => setImmediate(resolve))
 
+  assert.equal(loadLatestThreadWindowCount, 1)
   assert.deepEqual(titleLifecycleCalls, [{ threadId: 'thread-1', status: 'failed' }])
+
+  await dispatcher.onRunSettled('thread-1', 'run-2', 'done')
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.deepEqual(titleLifecycleCalls, [
+    { threadId: 'thread-1', status: 'failed' },
+    { threadId: 'thread-1', status: 'finished' }
+  ])
+  assert.deepEqual(generatedTitles, [])
 
   releaseFailedRefresh?.()
   await failedSettled
-  await dispatcher.onRunSettled('thread-1', 'run-2', 'finished')
-  await new Promise((resolve) => setImmediate(resolve))
-
-  assert.deepEqual(generatedTitles, [])
 })

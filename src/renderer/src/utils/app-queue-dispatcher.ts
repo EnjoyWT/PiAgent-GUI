@@ -25,6 +25,7 @@ import {
   resetQueueControllerAfterAbort
 } from './app-queue-state'
 import { removeOptimisticAssistantPlaceholders } from './pending-assistant-placeholder'
+import type { ThreadTitleRunStatus } from './thread-title-coordinator'
 
 export type DispatchPolicy = 'auto' | 'paused'
 
@@ -70,7 +71,7 @@ type QueueDispatcherOptions = {
   reserveThreadTitleFromText: (thread: ThreadRow, text: string, imageCount?: number) => void
   refineThreadTitleAfterRun: (input: {
     threadId: string
-    status: 'finished' | 'failed' | 'aborted'
+    status: ThreadTitleRunStatus
   }) => void
   ensureThreadStarted: (thread: ThreadRow) => Promise<ThreadRow>
   ensureMessageBuffer: (threadId: string) => ChatMessage[]
@@ -165,6 +166,13 @@ const createThreadQueueController = (): ThreadQueueController =>
     postRunAction: { type: 'none' } as PostRunAction,
     actionRevision: 0
   }) as ThreadQueueController
+
+const toThreadTitleRunStatus = (status: string): ThreadTitleRunStatus | null => {
+  if (status === 'done') return 'finished'
+  if (status === 'error') return 'failed'
+  if (status === 'aborted') return 'aborted'
+  return null
+}
 
 export const useQueueDispatcher = (options: QueueDispatcherOptions): QueueDispatcherState => {
   const queueControllersByThreadId = reactive<Record<string, ThreadQueueController>>({})
@@ -689,8 +697,9 @@ export const useQueueDispatcher = (options: QueueDispatcherOptions): QueueDispat
   }
 
   const onRunSettled = async (threadId: string, runId: string, status: string): Promise<void> => {
-    if (status === 'aborted' || status === 'failed') {
-      options.refineThreadTitleAfterRun({ threadId, status })
+    const titleStatus = toThreadTitleRunStatus(status)
+    if (titleStatus === 'aborted' || titleStatus === 'failed') {
+      options.refineThreadTitleAfterRun({ threadId, status: titleStatus })
     }
 
     const controller = ensureQueueController(threadId)
@@ -770,8 +779,8 @@ export const useQueueDispatcher = (options: QueueDispatcherOptions): QueueDispat
       void dispatchQueuedHead(threadId)
     }
 
-    if (status === 'finished') {
-      options.refineThreadTitleAfterRun({ threadId, status })
+    if (titleStatus === 'finished') {
+      options.refineThreadTitleAfterRun({ threadId, status: titleStatus })
     }
   }
 
