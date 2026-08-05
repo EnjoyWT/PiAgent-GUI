@@ -256,6 +256,7 @@ import {
   buildFallbackThreadTitle,
   createThreadTitleCoordinator
 } from './utils/thread-title-coordinator'
+import { scheduleThreadTitleRefinement } from './utils/thread-title-lifecycle'
 import {
   applyContextCompactionEventToMessages,
   isContextCompactionEvent
@@ -847,9 +848,9 @@ const refineThreadTitleAfterRun = (input: {
   threadId: string
   status: 'finished' | 'failed' | 'aborted'
 }): void => {
-  window.setTimeout(() => {
-    void threadTitleCoordinator.refineAfterRun(input)
-  }, 250)
+  scheduleThreadTitleRefinement(input, (refinement) =>
+    threadTitleCoordinator.refineAfterRun(refinement)
+  )
 }
 
 // ── 滚动 ──────────────────────────────────────────────────────────
