@@ -39,14 +39,14 @@
 
 ### 会话能力状态
 
-每个对话持有独立、可恢复的能力缓存投影；每个 agent session 从该投影派生本次 active 集合。状态包含：
+每个对话在应用进程内持有独立的能力缓存投影；每个 agent session 从该投影派生本次 active 集合。状态包含：
 
 - 固定核心能力
 - 已激活的缓存能力及其依赖组
 - `activatedAt`、`lastUsedTurnSequence`、`useCount`、是否显式固定
 - schema token 估算、来源/配置版本、可用状态和 capability revision
 
-缓存是能力可见性的唯一投影，不保存完整 schema、Skill 正文或工具调用 delta。状态变更以 revision 串行化；旧 run、取消请求或异步 MCP 初始化都不能覆盖较新的 revision。
+缓存是能力可见性的唯一投影，不保存完整 schema、Skill 正文或工具调用 delta，也不写入对话事件或 SQLite。应用重启后缓存从 core-only 重新建立。状态变更以 revision 串行化；旧 run、取消请求或异步 MCP 初始化都不能覆盖较新的 revision。
 
 ## 核心工具集
 
