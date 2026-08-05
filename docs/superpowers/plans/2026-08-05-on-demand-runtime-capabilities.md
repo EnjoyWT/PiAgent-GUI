@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Start new conversations with only core tools, let the model discover and activate registered tools and Skills without rebuilding pi-mono sessions, and remove the composer MCP selector.
+**Goal:** Start new conversations with only core tools, let the model discover and activate registered non-core tools without rebuilding pi-mono sessions, preserve Pi's default metadata loading for enabled Skills, and remove the composer MCP selector.
 
-**Architecture:** Register eligible definitions once, but resolve only a core allowlist at startup. Keep a process-local, per-conversation capability cache under a deterministic token budget. `capabilitySearch` reads the complete registry and `capabilityActivate` calls pi-mono's `setActiveToolsByName` at a tool-call boundary. The session loader retains a private Skill catalog but marks every Skill non-invocable for pi-mono's prompt formatter; `skillSearch` and `readSkillTool` expose it on demand.
+**Architecture:** Register eligible tool definitions once, but resolve only a core allowlist at startup. Keep a process-local, per-conversation capability cache under a deterministic token budget. `capabilitySearch` reads the complete tool registry and `capabilityActivate` calls pi-mono's `setActiveToolsByName` at a tool-call boundary. Skills use Pi's normal resource-loader path: enabled, non-`skills_disabled` Skills contribute the standard metadata directory, while `readSkillTool` reads complete Skill bodies on demand. There is no private Skill catalog, metadata suppression, or `skillSearch` tool.
 
 **Tech Stack:** Electron, TypeScript, Vue 3, `@earendil-works/pi-coding-agent`, Node test runner.
 
@@ -15,7 +15,7 @@
 - The capability cache is process-local. An app restart returns to core-only; there is no SQLite migration, legacy data work, or event-delta persistence.
 - Definitions can remain registered or their MCP connections pooled. Only the model-visible active allowlist is evicted.
 - Cache selection is deterministic and local; it never performs an intent-classification model request.
-- A capability may activate only when it is in the current session registry, workspace-authorized, surface-eligible, and still current.
+- A non-core tool capability may activate only when it is in the current session registry, workspace-authorized, surface-eligible, and still current. Skills remain available through Pi's default metadata directory rather than capability activation.
 - Existing workspace MCP bindings remain the authorization boundary. Removing the composer control must not remove MCP Settings.
 
 ## File map
@@ -202,7 +202,7 @@ export const createCapabilityActivateTool = ({ activate }: { activate: (names: s
   createActivateTool((names) => activate(names))
 ```
 
-Search returns a bounded metadata-only list from the full registry. Activation revalidates current status, applies cache changes and calls the supplied session adapter once. Replace system-prompt wording so non-core operations must use search, activate, then call.
+Search returns a bounded metadata-only list from the full tool registry. Activation revalidates current status, applies cache changes and calls the supplied session adapter once. Replace system-prompt wording so non-core tool operations must use search, activate, then call.
 
 - [ ] **Step 4: Verify GREEN and commit**
 
@@ -213,7 +213,7 @@ git add src/main/tools/runtime-capability-tools.ts src/main/runtime-host/runtime
 git commit -m "feat: add on-demand capability tools"
 ```
 
-### Task 4: Integrate pi-mono session switching and Skill discovery
+### Task 4: Integrate pi-mono session switching and default Skill availability
 
 **Files:**
 - Modify: `src/main/runtime-host/coding-agent-runtime-bridge.ts`
@@ -251,7 +251,7 @@ Expected: FAIL because the bridge currently passes the full default allowlist.
 
 Add `capabilityStateByConversationId: Map<string, RuntimeCapabilityState>`. Build a full catalog with `buildRuntimeToolCatalog(resolution.entries)`, rather than the existing active-only catalog. Register all already known definitions in `customTools`, but create the session with `state.selectForTurn(...)`. Build meta-tools before session creation and bind `capabilityActivate` to the live session through a closure after creation. Mark actual tool use, carry the in-memory state through same-process session recreation, and clear it on conversation disposal/deletion.
 
-Keep the loader's complete Skill catalog in process, but return prompt-suppressed Skill entries to pi-mono so `formatSkillsForPrompt` emits no full metadata. `skillSearch` returns bounded metadata, and `readSkillTool` reads only a discovered enabled Skill.
+Use the loader's normal available Skill list for `readSkillTool`. Do not construct a private Skill catalog, suppress Pi's Skill metadata directory, or register `skillSearch`. The loader excludes `skills_disabled` entries; every other configuration-enabled Skill remains model-invocable through Pi's default metadata mechanism, and `readSkillTool` reads its body only when requested.
 
 - [ ] **Step 4: Verify GREEN and commit**
 
@@ -346,7 +346,7 @@ git commit -m "chore: measure runtime capability prompt budget"
 
 ## Plan self-review
 
-- Tasks 1–4 cover core-only startup, full-catalog search, guarded activation, cache retention, Skill metadata suppression, and pi-mono switching.
+- Tasks 1–4 cover core-only tool startup, full tool-catalog search, guarded activation, cache retention, Pi default Skill metadata loading with on-demand body reads, and pi-mono switching.
 - Task 5 removes only the composer selector and preserves workspace MCP authorization settings.
 - Task 6 covers token measurement and verification without reintroducing stream-event persistence.
 - All test steps have commands and expected outcomes; names used by later tasks are defined by earlier tasks.

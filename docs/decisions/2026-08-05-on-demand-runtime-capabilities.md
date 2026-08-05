@@ -1,7 +1,7 @@
 # 按需运行时能力架构
 
 日期：2026-08-05
-状态：审阅中，待实施
+状态：已实施
 
 ## 背景
 
@@ -11,7 +11,7 @@
 
 ## 决策
 
-采用“能力目录 + 按需激活”架构：模型首轮只获得固定核心工具、能力搜索工具、能力激活工具和 Skill 读取工具；其他能力只在模型搜索并请求启用后，才进入当前运行时的 active tool allowlist。
+采用“能力目录 + 按需激活”架构：模型首轮只获得固定核心工具、能力搜索工具、能力激活工具和 Skill 读取工具；其他非核心工具只在模型搜索并请求启用后，才进入当前运行时的 active tool allowlist。Skills 不属于该按需工具 allowlist：配置启用且未被 `skills_disabled` 禁用的 Skills 由 Pi 的默认资源加载流程提供 metadata 目录，让模型正常获知其可用性。
 
 对话框移除 MCP 选择入口。MCP 的安装、工作区绑定和授权继续在工作区/设置层管理；它们决定模型可发现的候选范围，但不再决定首轮 prompt 中出现的 schema。
 
@@ -27,13 +27,13 @@
 
 ### 能力注册表
 
-注册表是运行时内部的完整能力目录，不直接注入模型 prompt。每个条目至少包含：
+注册表是运行时内部的完整**工具**能力目录，不直接注入模型 prompt。每个条目至少包含：
 
-- `id`、`name`、`kind`（tool、skill、mcp、plugin）
+- `id`、`name`、`kind`（tool、mcp、plugin）
 - `label`、简短描述、tags、来源、适用 surface
 - 可用状态（active、discoverable、blocked、provisioning）与不可用原因
 - 权限等级、依赖能力、版本和 schema token 估算
-- 完整工具定义或 Skill 内容的本地引用
+- 完整工具定义的本地引用
 
 搜索结果只返回必要的轻量元数据，默认不返回完整参数 schema。
 
@@ -53,14 +53,14 @@
 默认常驻的本地 coding profile 为：
 
 - 文件与代码基本操作：读取、查找、命令、编辑、写入
-- `capabilitySearch`：搜索工具、Skill、MCP 和插件能力
+- `capabilitySearch`：搜索工具、MCP 和插件能力
 - `capabilityActivate`：请求启用已发现的能力
 - `readSkillTool`：读取已发现 Skill 的完整指令
 - 必须的运行时协调工具，例如任务计划
 
 网页访问、计算机控制、定时任务、IM、系统诊断、密钥交互、子代理、插件和 MCP 工具默认不 active。
 
-系统提示词只说明按需能力协议：需要非核心能力时先搜索、再激活、最后调用；不再列出全量工具或全量 Skill。
+系统提示词只说明按需工具能力协议：需要非核心工具时先搜索、再激活、最后调用；不再列出全量工具。启用 Skills 的 metadata 目录仍按 Pi 原有默认方式注入。
 
 ## 调用流程
 
@@ -76,8 +76,10 @@
 
 ## Skill 策略
 
-- Skill 不再以全量 metadata 注入系统提示词。
-- 搜索命中 Skill 后，模型通过 `readSkillTool` 读取正文。
+- 不建立私有 Skill catalog，也不提供 `skillSearch` 工具。
+- 用户配置启用且不在 `skills_disabled` 中的 Skills，按 Pi 原有默认资源加载流程提供 metadata 目录；模型可据此知道可用 Skill。
+- `readSkillTool` 直接从该默认可用 Skill 列表读取所选 Skill 的完整 `SKILL.md` 内容（默认省略 frontmatter），因此正文仍按需加载而不会常驻上下文。
+- 被 `skills_disabled` 禁用的 Skills 不会出现在默认可用列表，也不能被 `readSkillTool` 读取。
 - Skill 内容是任务资料，不得提升优先级或覆盖应用安全策略、用户意图和沙箱限制。
 - 第三方或工作区 Skill 必须携带信任来源；涉及外部写入、网络、密钥或系统操作时继续走既有确认机制。
 - 已读 Skill 默认只在当前 run 生效，不作为永久上下文驻留。
@@ -150,17 +152,18 @@
 - 记忆注入
 - 核心工具 schema
 - 动态激活工具 schema
-- Skill 内容
+- Pi 默认 Skill metadata 目录
+- 按需读取的 Skill 内容
 - MCP / 插件 schema
 
 验收条件：
 
-1. 新会话普通聊天不含非核心工具 schema 和全量 Skill metadata。
+1. 新会话普通聊天不含非核心工具 schema；配置启用且未禁用的 Skills 以 Pi 默认 metadata 目录出现，但不注入完整 Skill 正文。
 2. 搜索前模型不能调用隐藏工具；激活后下一次 agent step 能调用该工具。
 3. 活动工具集在取消、并发 follow-up、删除会话和 workspace 切换后不泄漏。
 4. MCP 未被使用时不把 schema 注入模型请求；不可用 MCP 有明确失败路径。
 5. 消息 UI 和 run/turn 投影不因能力状态更新重复、消失或延迟。
-6. 新会话首轮 prompt token 和 TTFT 以 instrumentation 量化，相对当前约 16.6k 输入 token 有显著、稳定下降。
+6. 新会话首轮 prompt token 和 TTFT 以 instrumentation 量化；记录核心工具、动态工具、Pi 默认 Skill metadata 和按需 Skill 内容各自的贡献。
 7. 已激活工具在后续 turn 直接可用，不产生额外的搜索/激活模型步骤；超过缓存预算时以确定性策略回收。
 8. 缓存预检不触发任何额外模型请求。
 
@@ -170,6 +173,6 @@
 2. 引入完整能力注册表与 core-only resolver，保留现有工具实现。
 3. 将现有 discovery 升级为全量可发现目录，并新增受控 activation 工具。
 4. 接入 session active allowlist、会话能力缓存、revision、无模型预检和预算回收策略。
-5. 调整 Skill 注入策略和 MCP 预注册/延迟 provisioning。
+5. 保持 Pi 默认 Skill metadata 加载与 `readSkillTool` 的按需正文读取，并接入 MCP 预注册/延迟 provisioning。
 6. 移除对话框 MCP 选择入口，将授权保留在工作区设置。
 7. 用 feature flag 灰度切换，补齐单元、集成、竞态和 token 回归测试。
