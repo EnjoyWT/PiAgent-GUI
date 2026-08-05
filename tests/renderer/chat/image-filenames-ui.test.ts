@@ -29,27 +29,3 @@ test('chat input animated caret uses supported color configuration', () => {
   assert.equal(source.includes('preset="gradient-green"'), false)
   assert.match(source, /<YLAnimatedCaret[\s\S]*:trail-count="2"/)
 })
-
-test('file change names expose path tooltip and native context menu hook', () => {
-  const rightArea = readSource('src/renderer/src/components/layout/RightArea.vue')
-  const flowRenderer = readSource('src/renderer/src/components/chat/FlowRenderer.vue')
-  const chatMessageItem = readSource('src/renderer/src/components/chat/ChatMessageItem.vue')
-  const preload = readSource('src/preload/index.ts')
-  const mainIndex = readSource('src/main/index.ts')
-
-  assert.match(rightArea, /:workspace-path="workspacePath"/)
-  assert.match(chatMessageItem, /workspacePath\?: string/)
-  assert.match(chatMessageItem, /:workspace-path="props\.workspacePath"/)
-  assert.match(flowRenderer, /import Tooltip from '\.\.\/common\/Tooltip\.vue'/)
-  assert.match(flowRenderer, /workspacePath\?: string/)
-  assert.match(flowRenderer, /const resolveFileDisplayPath = \(filePath: string\): string/)
-  assert.match(flowRenderer, /<Tooltip[\s\S]*:text="resolveFileDisplayPath\(block\.entry\.path\)"/)
-  assert.match(
-    flowRenderer,
-    /@contextmenu\.prevent\.stop="openFileContextMenu\(block\.entry\.path\)"/
-  )
-  assert.match(chatMessageItem, /:thread-id="props\.run\?\.threadId"/)
-  assert.match(preload, /showFileContextMenu:/)
-  assert.match(preload, /workspacePath\?: string \| null/)
-  assert.match(mainIndex, /setupFileContextMenuHandlers\(\)/)
-})

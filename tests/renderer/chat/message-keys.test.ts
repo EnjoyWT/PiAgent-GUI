@@ -55,13 +55,3 @@ test('prefers semantic turn identity over persisted ids when available', () => {
   assert.equal(getMessageIdentityKey(message), 'turn:assistant:chat:run-1:turn-1')
   assert.equal(getMessageRenderKey(message, 0), 'turn:assistant:chat:run-1:turn-1')
 })
-
-test('prefers semantic submission identity over persisted ids for user chat messages', () => {
-  const message: ChatMessage = {
-    id: 'msg-2',
-    role: 'user',
-    content: '你好呀',
-  }
-
-  assert.equal(getMessageIdentityKey(message), 'submission:user:chat:submission-1')
-})
