@@ -110,6 +110,7 @@ import type { DispatchDeliveryResult } from '../main/transport/outbound-dispatch
 import type { TransportHostStatus } from '../main/transport/transport-host.ts'
 import type { ComputerUseSetupReport } from '../shared/computer-use-settings.ts'
 import type { WorkspaceSandboxPermissionPrompt } from '../shared/workspace-sandbox-permission.ts'
+import type { AppStorageSummary } from '../shared/app-storage.ts'
 
 type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
 type SkillDoctorEntry = {
@@ -175,6 +176,9 @@ const api = {
       ipcRenderer.on('app-update:status', listener)
       return () => ipcRenderer.removeListener('app-update:status', listener)
     }
+  },
+  appStorage: {
+    getSummary: (): Promise<AppStorageSummary> => ipcRenderer.invoke('app-storage:get-summary')
   },
   showFileContextMenu: (input: {
     path: string

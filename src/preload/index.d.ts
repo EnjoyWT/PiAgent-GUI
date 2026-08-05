@@ -80,6 +80,7 @@ import type {
   DoctorDomainInfo
 } from '../main/doctor/doctor-types.ts'
 import type { ComputerUseDoctorResult } from '../main/computer-use/computer-use-types.ts'
+import type { AppStorageSummary } from '../shared/app-storage.ts'
 
 type KnowledgeListQueryOptions = {
   limit?: number
@@ -179,6 +180,9 @@ declare global {
         quitAndInstall: () => Promise<AppUpdateStatus>
         openReleasePage: () => Promise<{ success: true; url: string }>
         onStatus: (callback: (status: AppUpdateStatus) => void) => () => void
+      }
+      appStorage: {
+        getSummary: () => Promise<AppStorageSummary>
       }
       showFileContextMenu: (input: {
         path: string
