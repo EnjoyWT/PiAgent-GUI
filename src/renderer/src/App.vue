@@ -993,6 +993,7 @@ let offSubagentPanelEvent: (() => void) | null = null
 let offTransportAccountSetupEvent: (() => void) | null = null
 let offWorkspacesChanged: (() => void) | null = null
 let offAppUpdateStatus: (() => void) | null = null
+let offLocalConversationCleanup: (() => void) | null = null
 
 const applyTransportAccountSetupEventToThreadRuns = (
   event: TransportPluginAccountSetupEvent
@@ -1112,6 +1113,18 @@ const reloadWorkspaceSnapshot = async (): Promise<void> => {
   resetActiveThreadState(fallbackWorkspacePath)
 }
 
+const refreshAfterLocalConversationCleanup = async (): Promise<void> => {
+  const threadIds = threads.value.map((thread) => thread.id)
+  await Promise.all(
+    threadIds.map((threadId) =>
+      window.api.runtime.disposeThread(threadId).catch((error) => {
+        console.warn('Dispose cleaned conversation runtime failed', error)
+      })
+    )
+  )
+  await reloadWorkspaceSnapshot()
+}
+
 const handleGlobalSearchShortcut = (event: KeyboardEvent): void => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault()
@@ -1150,6 +1163,9 @@ onMounted(async () => {
   })
 
   if (!isSettingsPage.value && !isKnowledgeManagerPage.value && !isRuntimeInspectorPage.value) {
+    offLocalConversationCleanup = window.api.localConversations.onCleared(() => {
+      void refreshAfterLocalConversationCleanup()
+    })
     offOpenThread = window.api.onOpenThread((threadId) => {
       void (async () => {
         const existing = threads.value.find((thread) => thread.id === threadId)
@@ -1400,6 +1416,7 @@ onUnmounted(() => {
   offTransportAccountSetupEvent?.()
   offWorkspacesChanged?.()
   offAppUpdateStatus?.()
+  offLocalConversationCleanup?.()
   if (!isSettingsPage.value && !isKnowledgeManagerPage.value && !isRuntimeInspectorPage.value) {
     void window.api.runtime.setActiveThread(null)
   }

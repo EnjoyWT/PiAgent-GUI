@@ -185,9 +185,10 @@ declare global {
         getSummary: () => Promise<AppStorageSummary>
       }
       localConversations: {
-        cleanup: () => Promise<{ cleared: true }>
-        onProgress: (callback: (progress: any) => void) => () => void
-      }
+          cleanup: () => Promise<{ cleared: true }>
+          onProgress: (callback: (progress: any) => void) => () => void
+          onCleared: (callback: () => void) => () => void
+        }
       showFileContextMenu: (input: {
         path: string
         threadId?: string | null

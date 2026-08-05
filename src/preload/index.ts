@@ -186,6 +186,11 @@ const api = {
       const listener = (_: Electron.IpcRendererEvent, progress: any) => callback(progress)
       ipcRenderer.on('local-conversations:cleanup-progress', listener)
       return () => ipcRenderer.removeListener('local-conversations:cleanup-progress', listener)
+    },
+    onCleared: (callback: () => void): (() => void) => {
+      const listener = () => callback()
+      ipcRenderer.on('local-conversations:cleared', listener)
+      return () => ipcRenderer.removeListener('local-conversations:cleared', listener)
     }
   },
   showFileContextMenu: (input: {
