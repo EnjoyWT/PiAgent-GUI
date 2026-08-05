@@ -167,7 +167,7 @@ onBeforeUnmount(() => {
       :aria-expanded="!intermediateProcessCollapsed"
       @click="toggleIntermediateProcess"
     >
-      <span class="text-[15px] font-medium leading-relaxed"
+      <span class="text-[14px] font-medium leading-relaxed"
         >已处理 {{ formatThinkingDuration(processedDurationMs) }}</span
       >
       <ChevronDown v-if="!intermediateProcessCollapsed" :size="14" class="shrink-0" />
