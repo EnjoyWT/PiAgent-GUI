@@ -4,7 +4,7 @@
 
 **Goal:** Start new conversations with only core tools, let the model discover and activate registered tools and Skills without rebuilding pi-mono sessions, and remove the composer MCP selector.
 
-**Architecture:** Register eligible definitions once, but resolve only a core allowlist at startup. Keep a process-local, per-conversation capability cache under a deterministic token budget. `capabilitySearch` reads the complete registry and `capabilityActivate` calls pi-mono's `setActiveToolsByName` at a tool-call boundary. A no-Skills session loader prevents full Skill metadata from entering the initial prompt; a discovery loader still supplies `readSkillTool`.
+**Architecture:** Register eligible definitions once, but resolve only a core allowlist at startup. Keep a process-local, per-conversation capability cache under a deterministic token budget. `capabilitySearch` reads the complete registry and `capabilityActivate` calls pi-mono's `setActiveToolsByName` at a tool-call boundary. The session loader retains a private Skill catalog but marks every Skill non-invocable for pi-mono's prompt formatter; `skillSearch` and `readSkillTool` expose it on demand.
 
 **Tech Stack:** Electron, TypeScript, Vue 3, `@earendil-works/pi-coding-agent`, Node test runner.
 
@@ -251,7 +251,7 @@ Expected: FAIL because the bridge currently passes the full default allowlist.
 
 Add `capabilityStateByConversationId: Map<string, RuntimeCapabilityState>`. Build a full catalog with `buildRuntimeToolCatalog(resolution.entries)`, rather than the existing active-only catalog. Register all already known definitions in `customTools`, but create the session with `state.selectForTurn(...)`. Build meta-tools before session creation and bind `capabilityActivate` to the live session through a closure after creation. Mark actual tool use, carry the in-memory state through same-process session recreation, and clear it on conversation disposal/deletion.
 
-Create two `DefaultResourceLoader` roles: a discovery loader with Skills enabled for catalog and `readSkillTool`, and a session loader with `noSkills: true`. Pass only the latter to `createAgentSession`.
+Keep the loader's complete Skill catalog in process, but return prompt-suppressed Skill entries to pi-mono so `formatSkillsForPrompt` emits no full metadata. `skillSearch` returns bounded metadata, and `readSkillTool` reads only a discovered enabled Skill.
 
 - [ ] **Step 4: Verify GREEN and commit**
 

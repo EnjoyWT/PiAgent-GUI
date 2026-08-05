@@ -1434,6 +1434,9 @@ export class CodingAgentRuntimeBridge {
       onEventsFlushed: async (rows) => this.persistRuntimeEvents(conversation.id, rows),
       resolveCanonicalRunId: (agentRunId) => this.resolveCoreRunId(conversation.id, agentRunId),
       onAppEvent: (appEvent) => {
+        if (appEvent.type === 'agent.tool.started') {
+          capabilityState?.markUsed(appEvent.tool.name, Date.now())
+        }
         const mappedAppEvent = this.mapAppEventRunId(conversation.id, appEvent)
         if (!mappedAppEvent) return
         this.emitAppEvent?.(interactionThreadId, mappedAppEvent)
