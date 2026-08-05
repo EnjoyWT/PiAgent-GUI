@@ -38,7 +38,7 @@ registerHooks({
 const { InMemoryCoreService } = await import('../../../src/main/core-v2/in-memory-core-service.ts')
 const { CodingAgentRuntimeBridge, buildAgentSessionToolAllowlist, getAgentPluginExtensionTools } =
   await import('../../../src/main/runtime-host/coding-agent-runtime-bridge.ts')
-const { replaceProviderModels, setProviderApiKey, upsertProvider } =
+const { getSetting, replaceProviderModels, setProviderApiKey, setSetting, upsertProvider } =
   await import('../../../src/main/db/config-db.ts')
 
 const createCore = () => {
@@ -173,19 +173,28 @@ test('runtime bridge exposes extension-registered plugin tools for runtime catal
   }
 })
 
-test('runtime bridge suppresses Skill metadata from the session prompt but keeps an enabled catalog', async () => {
+test('runtime bridge exposes enabled Skills to the framework loader and filters disabled Skills', async () => {
   const tempRoot = mkdtempSync(resolve(os.tmpdir(), 'piagent-runtime-skills-'))
+  const previousDisabledSkills = getSetting('skills_disabled')
 
   try {
     const workspacePath = resolve(tempRoot, 'workspace')
-    const skillDir = resolve(tempRoot, 'skills', 'pdf')
+    const pdfSkillDir = resolve(tempRoot, 'skills', 'pdf')
+    const textSkillDir = resolve(tempRoot, 'skills', 'text')
     mkdirSync(workspacePath, { recursive: true })
-    mkdirSync(skillDir, { recursive: true })
+    mkdirSync(pdfSkillDir, { recursive: true })
+    mkdirSync(textSkillDir, { recursive: true })
     writeFileSync(
-      resolve(skillDir, 'SKILL.md'),
+      resolve(pdfSkillDir, 'SKILL.md'),
       ['---', 'name: pdf', 'description: Work with PDF files', '---', '', '# PDF'].join('\n'),
       'utf8'
     )
+    writeFileSync(
+      resolve(textSkillDir, 'SKILL.md'),
+      ['---', 'name: text', 'description: Work with text files', '---', '', '# Text'].join('\n'),
+      'utf8'
+    )
+    setSetting('skills_disabled', JSON.stringify(['text']))
 
     const bridge = new CodingAgentRuntimeBridge({ core: createCore() })
     const loader = await (bridge as any).createResourceLoader(
@@ -196,14 +205,13 @@ test('runtime bridge suppresses Skill metadata from the session prompt but keeps
       { skillPaths: [resolve(tempRoot, 'skills')], extensionPaths: [], extensionFactories: [] }
     )
 
-    assert.equal(loader.getSkills().skills.find((skill: { name: string }) => skill.name === 'pdf')?.disableModelInvocation, true)
-    assert.equal(
-      (bridge as any).skillCatalogByConversationId
-        .get('conversation-1')
-        .some((skill: { name: string }) => skill.name === 'pdf'),
-      true
-    )
+    const skills = loader.getSkills().skills
+    const pdf = skills.find((skill: { name: string }) => skill.name === 'pdf')
+    assert.ok(pdf)
+    assert.notEqual(pdf.disableModelInvocation, true)
+    assert.equal(skills.some((skill: { name: string }) => skill.name === 'text'), false)
   } finally {
+    setSetting('skills_disabled', previousDisabledSkills ?? '')
     rmSync(tempRoot, { recursive: true, force: true })
   }
 })
