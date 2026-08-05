@@ -5,6 +5,7 @@ import {
   ModelRuntime,
   SessionManager,
   SettingsManager,
+  type Skill,
   type ToolDefinition,
   createAgentSession
 } from '@earendil-works/pi-coding-agent'
@@ -114,6 +115,7 @@ import {
   createCapabilityActivateTool,
   createCapabilitySearchTool
 } from '../tools/runtime-capability-tools.ts'
+import { createSkillSearchTool } from '../tools/skill-search-tool.ts'
 import { createPlanTools } from '../tools/plan-tool.ts'
 import {
   RuntimeUserInteractionController,
@@ -485,6 +487,7 @@ export class CodingAgentRuntimeBridge {
   private modelRuntimeInit: Promise<ModelRuntime> | null = null
   private readonly sessionsByConversationId = new Map<string, HeadlessRuntimeSession>()
   private readonly capabilityStateByConversationId = new Map<string, RuntimeCapabilityState>()
+  private readonly skillCatalogByConversationId = new Map<string, Skill[]>()
   private readonly abortRequestedConversationIds = new Set<string>()
   private readonly providerGenerationById = new Map<string, number>()
   private readonly conversationIdByInteractionThreadId = new Map<string, string>()
@@ -672,6 +675,7 @@ export class CodingAgentRuntimeBridge {
     this.disposeSession(existing)
     this.sessionsByConversationId.delete(resolvedConversationId)
     this.capabilityStateByConversationId.delete(resolvedConversationId)
+    this.skillCatalogByConversationId.delete(resolvedConversationId)
     this.activeRunByConversationId.delete(resolvedConversationId)
     this.forgetInteractionThreadMapping(resolvedConversationId)
   }
@@ -715,6 +719,7 @@ export class CodingAgentRuntimeBridge {
     }
     this.sessionsByConversationId.clear()
     this.capabilityStateByConversationId.clear()
+    this.skillCatalogByConversationId.clear()
     this.conversationIdByInteractionThreadId.clear()
     this.interactionThreadIdByConversationId.clear()
     this.activeRunByConversationId.clear()
@@ -1238,7 +1243,7 @@ export class CodingAgentRuntimeBridge {
       workspacePath,
       {
         extraMcpServers: agentPluginResources.mcpServers,
-        getSkills: () => loader.getSkills().skills,
+        getSkills: () => this.skillCatalogByConversationId.get(conversation.id) ?? [],
         sandboxPolicyId: policy.sandboxPolicyId
       }
     )
@@ -1279,6 +1284,9 @@ export class CodingAgentRuntimeBridge {
     }
     let liveSession: RuntimeSession | null = null
     let capabilityState: RuntimeCapabilityState | null = null
+    const skillSearchTool = createSkillSearchTool({
+      getSkills: () => this.skillCatalogByConversationId.get(conversation.id) ?? []
+    })
     const capabilitySearchTool = createCapabilitySearchTool({
       getCatalog: () => runtimeToolState.catalog
     })
@@ -1331,7 +1339,7 @@ export class CodingAgentRuntimeBridge {
       { source: 'builtin', tools: builtinToolDefinitions, scopes: ['local', 'im'] },
       {
         source: 'framework',
-        tools: [capabilitySearchTool, capabilityActivateTool, ...safeFrameworkTools],
+        tools: [capabilitySearchTool, capabilityActivateTool, skillSearchTool, ...safeFrameworkTools],
         scopes: ['local', 'im']
       },
       { source: 'mcp', tools: sandboxMcpTools, scopes: ['local', 'im'] },
@@ -1372,6 +1380,7 @@ export class CodingAgentRuntimeBridge {
       ...builtinToolDefinitions,
       capabilitySearchTool,
       capabilityActivateTool,
+      skillSearchTool,
       ...safeFrameworkTools,
       ...sandboxMcpTools,
       ...manifestPluginTools,
@@ -1985,21 +1994,30 @@ export class CodingAgentRuntimeBridge {
           ])
         )
       })(),
-      skillsOverride: (current) => ({
-        ...({
-          [legacySkillDoctorKey]: Reflect.get(current, legacySkillDoctorKey)
-        } as Omit<typeof current, 'skills'>),
-        skills: current.skills.map((skill) =>
-          disabledSet.has(skill.name) ? { ...skill, disableModelInvocation: true } : skill
-        )
-      }),
+      skillsOverride: (current) => {
+        const availableSkills = current.skills.filter((skill) => !disabledSet.has(skill.name))
+        this.skillCatalogByConversationId.set(conversationId, availableSkills)
+
+        return {
+          ...({
+            [legacySkillDoctorKey]: Reflect.get(current, legacySkillDoctorKey)
+          } as Omit<typeof current, 'skills'>),
+          // pi-mono normally writes every Skill name and description into the system prompt.
+          // Keep the catalog in-process and expose it through skillSearch/readSkillTool instead.
+          skills: current.skills.map((skill) => ({ ...skill, disableModelInvocation: true }))
+        }
+      },
       appendSystemPromptOverride: (base) => {
         const systemPrompt = surface.buildSystemPrompt({
           workspacePath,
           threadId,
           appConfigDir: this.appConfigDir
         })
-        const finalPrompt = memoryBlock ? `${systemPrompt}\n\n${memoryBlock}` : systemPrompt
+        const runtimeCapabilityGuidance =
+          'For a non-core tool, first call capabilitySearch, then capabilityActivate before use. For specialized instructions, first call skillSearch, then readSkillTool. Do not assume unavailable capabilities exist.'
+        const finalPrompt = [systemPrompt, memoryBlock, runtimeCapabilityGuidance]
+          .filter(Boolean)
+          .join('\n\n')
         return [...base, finalPrompt]
       }
     })

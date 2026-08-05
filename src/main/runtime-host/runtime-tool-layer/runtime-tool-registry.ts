@@ -72,7 +72,9 @@ const CORE_TOOL_NAMES = new Set([
   'grep',
   'ls',
   'capabilitySearch',
-  'capabilityActivate'
+  'capabilityActivate',
+  'skillSearch',
+  'readSkillTool'
 ])
 
 const uniqueSorted = <T extends string>(values: Iterable<T>): T[] =>
@@ -95,7 +97,9 @@ const inferToolsets = (
   if (
     tool.name === 'discoverBuiltinToolsTool' ||
     tool.name === 'capabilitySearch' ||
-    tool.name === 'capabilityActivate'
+    tool.name === 'capabilityActivate' ||
+    tool.name === 'skillSearch' ||
+    tool.name === 'readSkillTool'
   ) {
     return ['discovery']
   }

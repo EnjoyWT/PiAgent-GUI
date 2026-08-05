@@ -205,6 +205,8 @@ test('default local resolution exposes only core tools and capability meta-tools
       tools: [
         createTool('capabilitySearch', 'Discover runtime capabilities'),
         createTool('capabilityActivate', 'Activate runtime capabilities'),
+        createTool('skillSearch', 'Search available Skills'),
+        createTool('readSkillTool', 'Read a Skill'),
         createTool('webSearchTool', 'Search the web')
       ],
       scopes: ['local', 'im']
@@ -222,6 +224,8 @@ test('default local resolution exposes only core tools and capability meta-tools
     'grep',
     'ls',
     'read',
+    'readSkillTool',
+    'skillSearch',
     'write'
   ])
   assert.equal(resolution.entries.find((entry) => entry.name === 'webSearchTool')?.status, 'discoverable')
@@ -239,6 +243,8 @@ test('resolver preserves core tools when it receives cached active names', () =>
       tools: [
         createTool('capabilitySearch', 'Discover runtime capabilities'),
         createTool('capabilityActivate', 'Activate runtime capabilities'),
+        createTool('skillSearch', 'Search available Skills'),
+        createTool('readSkillTool', 'Read a Skill'),
         createTool('webSearchTool', 'Search the web')
       ],
       scopes: ['local', 'im']
@@ -255,6 +261,8 @@ test('resolver preserves core tools when it receives cached active names', () =>
     'capabilityActivate',
     'capabilitySearch',
     'read',
+    'readSkillTool',
+    'skillSearch',
     'webSearchTool'
   ])
 })
