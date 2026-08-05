@@ -21,6 +21,12 @@ export const getMessageIdentityKey = (message: MessageKeyFields): string => {
   if (message.agentRunId && message.agentTurnId) {
     return `turn:${message.role}:${kind}:${message.agentRunId}:${message.agentTurnId}`
   }
+  // The assistant run container survives streaming, terminal persistence, and
+  // hydration. Its key must not depend on the first runtime event sequence or
+  // on the final transcript timestamp, otherwise Vue remounts the flow.
+  if (message.role === 'assistant' && message.agentRunId) {
+    return `run:${message.role}:${kind}:${message.agentRunId}`
+  }
   if (message.agentRunId) {
     return `run:${message.role}:${kind}:${message.agentRunId}:${message.runtimeSequence ?? message.createdAt ?? ''}`
   }

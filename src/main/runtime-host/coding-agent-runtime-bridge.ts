@@ -2424,47 +2424,6 @@ export class CodingAgentRuntimeBridge {
     }
   }
 
-  private shouldPersistAssistantTurn(turn: AgentTurnProjection): boolean {
-    return (
-      turn.toolCalls.length > 0 ||
-      turn.timelineItems.some(
-        (item) =>
-          item.kind === 'tool' ||
-          item.kind === 'question_answer' ||
-          item.kind === 'questionnaire_question' ||
-          item.kind === 'questionnaire_answer' ||
-          (item.kind === 'text' && item.text.trim().length > 0)
-      ) ||
-      (turn.status === 'error' && Boolean(turn.errorMessage?.trim()))
-    )
-  }
-
-  private resolveAssistantTurnCreatedAt(
-    run: AgentRunProjection,
-    turn: AgentTurnProjection
-  ): number {
-    if (typeof turn.endedAt === 'number') return turn.endedAt
-
-    let latestTimelineAt: number | undefined
-    for (const item of turn.timelineItems) {
-      if (item.kind !== 'text' && item.kind !== 'thinking') continue
-      const candidate =
-        typeof item.endedAt === 'number'
-          ? item.endedAt
-          : typeof item.startedAt === 'number'
-            ? item.startedAt
-            : undefined
-      if (candidate == null) continue
-      latestTimelineAt =
-        latestTimelineAt == null ? candidate : Math.max(latestTimelineAt, candidate)
-    }
-
-    if (latestTimelineAt != null) return latestTimelineAt
-    if (typeof turn.startedAt === 'number') return turn.startedAt
-    if (typeof run.endedAt === 'number') return run.endedAt
-    return run.startedAt
-  }
-
   private async persistLocalAssistantMessages(
     threadId: string,
     requestedRun: AgentRun,
@@ -2472,27 +2431,7 @@ export class CodingAgentRuntimeBridge {
   ): Promise<void> {
     const host = await getLocalThreadHostService()
 
-    let persistedTurnMessage = false
-    for (const turn of projection.turns) {
-      if (!this.shouldPersistAssistantTurn(turn)) continue
-      const content = turn.text || (turn.status === 'error' ? turn.errorMessage?.trim() || '' : '')
-      const contentJson: ChatMessageContent | null = content
-        ? {
-            version: 1,
-            blocks: [{ type: 'text', text: content }]
-          }
-        : null
-      host.addMessage(threadId, 'assistant', content, requestedRun.id, contentJson, {
-        includeInAgentContext: requestedRun.triggerKind === 'automation' ? false : undefined,
-        agentTurnId: turn.agentTurnId ?? null,
-        createdAt: this.resolveAssistantTurnCreatedAt(projection, turn)
-      })
-      persistedTurnMessage = true
-    }
-
-    if (persistedTurnMessage) return
-
-    const text = projection.text.trim()
+    const text = projection.text.trim() || extractFirstTurnError(projection.turns) || ''
     if (!text) return
     host.addMessage(
       threadId,

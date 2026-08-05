@@ -241,6 +241,12 @@ export const getAssistantDisplayContentForRun = (run: AgentRun | null | undefine
       run.termination.willRetry
     )
   }
+  if (run.status === 'error') {
+    for (let index = run.turns.length - 1; index >= 0; index -= 1) {
+      const error = run.turns[index]?.errorMessage?.trim()
+      if (error) return error
+    }
+  }
   return ''
 }
 
@@ -602,6 +608,22 @@ export const findAssistantTurnMessageIn = (
     return message
   }
   return null
+}
+
+/**
+ * Decide whether this assistant message owns the rendered flow for a run.
+ * A live run uses one run-level container (without an agentTurnId) for its
+ * entire lifetime, including when the runtime starts later turns.
+ */
+export const isRunFlowPresentationMessage = (
+  message: Pick<ChatMessage, 'role' | 'run' | 'agentTurnId'>
+): boolean => {
+  if (message.role !== 'assistant' || !message.run) return false
+  if (!message.agentTurnId) return true
+  return (
+    message.run.turns.length <= 1 ||
+    message.run.turns[0]?.id === message.agentTurnId
+  )
 }
 
 export const ensureAssistantTurnMessageIn = (

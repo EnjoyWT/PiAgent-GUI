@@ -55,3 +55,20 @@ test('prefers semantic turn identity over persisted ids when available', () => {
   assert.equal(getMessageIdentityKey(message), 'turn:assistant:chat:run-1:turn-1')
   assert.equal(getMessageRenderKey(message, 0), 'turn:assistant:chat:run-1:turn-1')
 })
+test('keeps the run-level assistant render key stable from live streaming through final hydration', () => {
+  const live: ChatMessage = {
+    role: 'assistant',
+    content: 'partial answer',
+    agentRunId: 'run-1',
+    runtimeSequence: 146
+  }
+  const hydratedFinal: ChatMessage = {
+    id: 'final-message-1',
+    role: 'assistant',
+    content: 'final answer',
+    agentRunId: 'run-1',
+    createdAt: '2026-08-05T10:00:35.254+08:00'
+  }
+
+  assert.equal(getMessageRenderKey(live, 0), getMessageRenderKey(hydratedFinal, 0))
+})
