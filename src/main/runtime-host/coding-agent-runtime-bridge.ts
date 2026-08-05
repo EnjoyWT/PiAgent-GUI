@@ -106,7 +106,10 @@ import {
   resolveRuntimeTools,
   type RuntimeToolResolution
 } from './runtime-tool-layer/runtime-tool-resolver.ts'
-import { createDiscoverBuiltinToolsTool } from '../tools/discover-builtin-tools-tool.ts'
+import {
+  createCapabilityActivateTool,
+  createCapabilitySearchTool
+} from '../tools/runtime-capability-tools.ts'
 import { createPlanTools } from '../tools/plan-tool.ts'
 import {
   RuntimeUserInteractionController,
@@ -126,6 +129,7 @@ type RuntimeToolState = {
   registry: RuntimeToolRegistryEntry[]
   catalog: RuntimeToolCatalogEntry[]
   enabledToolsets: RuntimeToolsetId[]
+  activeToolNames: string[]
 }
 
 export type QueueStreamingPromptInput = {
@@ -194,11 +198,6 @@ const uniqueToolDefinitions = (tools: ToolDefinition[]): ToolDefinition[] => {
   }
   return [...byName.values()]
 }
-
-const buildActiveRuntimeToolCatalog = (
-  resolution: RuntimeToolResolution
-): RuntimeToolCatalogEntry[] =>
-  buildRuntimeToolCatalog(resolution.entries.filter((entry) => entry.status === 'active'))
 
 export const buildAgentSessionToolAllowlist = (
   resolution: Pick<RuntimeToolResolution, 'activeToolNames'>
@@ -1254,17 +1253,49 @@ export class CodingAgentRuntimeBridge {
       surface: surface.sourceKind,
       toolProfileId: policy.toolProfileId ?? null,
       registry,
-      catalog: buildActiveRuntimeToolCatalog(resolution),
-      enabledToolsets: resolution.enabledToolsets
+      catalog: buildRuntimeToolCatalog(resolution.entries),
+      enabledToolsets: resolution.enabledToolsets,
+      activeToolNames: buildAgentSessionToolAllowlist(resolution)
     }
-    const discoverBuiltinToolsTool = createDiscoverBuiltinToolsTool({
+    let liveSession: RuntimeSession | null = null
+    const capabilitySearchTool = createCapabilitySearchTool({
       getCatalog: () => runtimeToolState.catalog
+    })
+    const capabilityActivateTool = createCapabilityActivateTool({
+      activate: (names) => {
+        const accepted: string[] = []
+        const rejected: Array<{ name: string; reason: string }> = []
+        for (const name of names) {
+          const entry = runtimeToolState.catalog.find((candidate) => candidate.name === name)
+          if (!entry) {
+            rejected.push({ name, reason: 'Unknown runtime capability.' })
+            continue
+          }
+          if (entry.status === 'blocked') {
+            rejected.push({ name, reason: entry.blockedReason ?? 'Capability is unavailable.' })
+            continue
+          }
+          accepted.push(name)
+        }
+        if (accepted.length === 0) return { activated: [], rejected }
+        resolution = resolveRuntimeTools(runtimeToolState.registry, {
+          surface: runtimeToolState.surface,
+          toolProfileId: runtimeToolState.toolProfileId,
+          activeToolNames: [...runtimeToolState.activeToolNames, ...accepted]
+        })
+        const nextAllowlist = buildAgentSessionToolAllowlist(resolution)
+        liveSession?.setActiveToolsByName(nextAllowlist)
+        runtimeToolState.catalog = buildRuntimeToolCatalog(resolution.entries)
+        runtimeToolState.enabledToolsets = resolution.enabledToolsets
+        runtimeToolState.activeToolNames = nextAllowlist
+        return { activated: accepted.sort(), rejected }
+      }
     })
     registry = buildRuntimeToolRegistry([
       { source: 'builtin', tools: builtinToolDefinitions, scopes: ['local', 'im'] },
       {
         source: 'framework',
-        tools: [discoverBuiltinToolsTool, ...safeFrameworkTools],
+        tools: [capabilitySearchTool, capabilityActivateTool, ...safeFrameworkTools],
         scopes: ['local', 'im']
       },
       { source: 'mcp', tools: sandboxMcpTools, scopes: ['local', 'im'] },
@@ -1277,14 +1308,16 @@ export class CodingAgentRuntimeBridge {
       toolProfileId: policy.toolProfileId ?? null
     })
     runtimeToolState.registry = registry
-    runtimeToolState.catalog = buildActiveRuntimeToolCatalog(resolution)
+    runtimeToolState.catalog = buildRuntimeToolCatalog(resolution.entries)
     runtimeToolState.enabledToolsets = resolution.enabledToolsets
     const sessionToolAllowlist = buildAgentSessionToolAllowlist(resolution)
+    runtimeToolState.activeToolNames = sessionToolAllowlist
     const customTools = uniqueToolDefinitions([
       // createAgentSession installs its own builtin tools. Register these definitions too so
       // the session registry replaces those defaults with the guarded implementations.
       ...builtinToolDefinitions,
-      discoverBuiltinToolsTool,
+      capabilitySearchTool,
+      capabilityActivateTool,
       ...safeFrameworkTools,
       ...sandboxMcpTools,
       ...manifestPluginTools,
@@ -1310,6 +1343,7 @@ export class CodingAgentRuntimeBridge {
       contextWindow: modelDef.contextWindow ?? null,
       maxTokens: modelDef.maxTokens ?? null
     })
+    liveSession = session
     this.installXiaomiReasoningContentPayloadCompat(session as any)
     ;(session as any).setActiveToolsByName?.(sessionToolAllowlist)
     const contextSeedApplied = await this.applyContextSeed(
