@@ -1,7 +1,7 @@
 # 按需运行时能力架构
 
 日期：2026-08-05
-状态：已确认，待实施
+状态：审阅中，待实施
 
 ## 背景
 
@@ -39,14 +39,14 @@
 
 ### 会话能力状态
 
-每个 agent session 持有独立的能力状态：
+每个对话持有独立、可恢复的能力缓存投影；每个 agent session 从该投影派生本次 active 集合。状态包含：
 
 - 固定核心能力
-- 本 run 已激活能力
-- 显式固定的短期 lease
-- revision、激活时间、最后使用时间和 token 预算
+- 已激活的缓存能力及其依赖组
+- `activatedAt`、`lastUsedTurnSequence`、`useCount`、是否显式固定
+- schema token 估算、来源/配置版本、可用状态和 capability revision
 
-状态变更以 revision 串行化。旧 run、取消请求或异步 MCP 初始化都不能覆盖较新的 revision。
+缓存是能力可见性的唯一投影，不保存完整 schema、Skill 正文或工具调用 delta。状态变更以 revision 串行化；旧 run、取消请求或异步 MCP 初始化都不能覆盖较新的 revision。
 
 ## 核心工具集
 
@@ -98,13 +98,33 @@
 
 ## 生命周期与预算
 
-- 默认激活范围为当前 run；run 结束后回到 core-only。
-- 同一 run 的多次 agent step 共享 active 集合。
-- 仅当用户明确固定，或任务计划仍处于进行状态时，允许少量能力 lease 跨 turn 保留。
-- lease 有工具数和 schema token 上限；超过上限时回收最久未使用的非核心能力。
-- 取消、切换 workspace 或删除对话时，丢弃未持久化 lease 并释放对应远程资源。
+### 会话能力缓存
 
-默认不自动跨 turn 保留外部工具，保证普通聊天在任何时刻都不会因旧任务工具而回到全量 prompt。
+工具一旦成功激活，不应在 run 结束时立即移除。重新搜索和激活通常需要额外的模型步骤，成本可能高于在下一次请求中继续携带一个小 schema。激活结果因此写入当前对话的能力缓存；后续 turn 可以直接调用已缓存工具。
+
+新会话的首个 turn 仍为 core-only。随后每个 turn 创建 agent session 时，从缓存派生 `core + retained capabilities` 的 allowlist，不需要为此调用模型，也不需要让模型重新搜索已使用工具。
+
+### 无模型预检与回收
+
+在新的用户 turn 启动前，运行时仅执行确定性的本地预检：
+
+1. 移除 workspace 已切换、MCP/插件配置版本已变化、权限已撤销或健康检查失败的能力。
+2. 从核心能力开始，按固定优先级挑选缓存能力：显式固定、当前计划关联、最近实际使用、累计使用次数。
+3. 依赖能力作为一个原子组保留或回收，避免留下不可调用的半组能力。
+4. 超过工具数量或 schema token 预算时，从最低优先级的非固定组开始回收。
+5. 调用 `setActiveToolsByName` 设置本次 session 的 allowlist。
+
+该预检不分析新用户文本、不调用分类模型、不增加 agent step。所谓“相关性”仅来自实际使用记录、计划关联和显式固定，不能以一次额外 LLM 判断任务变化来实现。
+
+初始默认预算设为最多 8 个非核心工具、最多约 3,000 schema tokens；两者均为 profile 配置，并受模型 context window 的比例上限约束。真实数值必须由 run token instrumentation 校验，但回收算法和上限必须从首次发布就存在。
+
+### 失效与资源释放
+
+- 同一 run 的多次 agent step 使用同一 active 集合；激活后立刻对下一 agent step 生效。
+- MCP 连接可以保留短 TTL 连接池以减少重复握手，但连接复用不等于其 schema 继续暴露给模型。
+- 缓存能力在容量压力、长期未使用、来源版本变化、workspace 切换、用户解除固定或对话删除时回收。
+- 取消当前 run 不回滚已成功完成的激活事务，但不会将未完成 provisioning 写入能力缓存。
+- 删除对话时先停止 runtime，再清空缓存投影并释放远程资源。
 
 ## 并发与错误处理
 
@@ -119,7 +139,7 @@
 
 移除对话输入框中的 MCP 选择入口，因为它不再是 runtime 工具开关。
 
-可保留工作区设置中的 MCP 管理入口，用于配置、绑定、授权、健康状态和删除。若未来确有高级需求，可增加“固定本 run 的能力”入口，但它必须是显式 pin 行为，不得默认预加载全部 MCP schema。
+可保留工作区设置中的 MCP 管理入口，用于配置、绑定、授权、健康状态和删除。若未来确有高级需求，可增加“固定会话能力”入口，但它必须是显式 pin 行为，不得默认预加载全部 MCP schema。
 
 ## 可观测性与验收
 
@@ -140,14 +160,16 @@
 3. 活动工具集在取消、并发 follow-up、删除会话和 workspace 切换后不泄漏。
 4. MCP 未被使用时不把 schema 注入模型请求；不可用 MCP 有明确失败路径。
 5. 消息 UI 和 run/turn 投影不因能力状态更新重复、消失或延迟。
-6. 首轮 prompt token 和 TTFT 以 instrumentation 量化，相对当前约 16.6k 输入 token 有显著、稳定下降。
+6. 新会话首轮 prompt token 和 TTFT 以 instrumentation 量化，相对当前约 16.6k 输入 token 有显著、稳定下降。
+7. 已激活工具在后续 turn 直接可用，不产生额外的搜索/激活模型步骤；超过缓存预算时以确定性策略回收。
+8. 缓存预检不触发任何额外模型请求。
 
 ## 实施顺序
 
 1. 增加 token 分解与能力状态观测，不改变默认行为。
 2. 引入完整能力注册表与 core-only resolver，保留现有工具实现。
 3. 将现有 discovery 升级为全量可发现目录，并新增受控 activation 工具。
-4. 接入 session active allowlist、生命周期、revision 和回收策略。
+4. 接入 session active allowlist、会话能力缓存、revision、无模型预检和预算回收策略。
 5. 调整 Skill 注入策略和 MCP 预注册/延迟 provisioning。
 6. 移除对话框 MCP 选择入口，将授权保留在工作区设置。
 7. 用 feature flag 灰度切换，补齐单元、集成、竞态和 token 回归测试。
