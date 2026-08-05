@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Plug, Search, RefreshCw, Store, Server } from 'lucide-vue-next'
 import McpMarketplace from './mcp/McpMarketplace.vue'
 import McpInstalledList from './mcp/McpInstalledList.vue'
@@ -54,10 +54,13 @@ const marketplaceNextCursor = ref<string | undefined>(undefined)
 const marketplaceError = ref('')
 const installedServers = ref<InstalledMcpServer[]>([])
 const installedLoading = ref(false)
+const refreshIconSpinning = ref(false)
+let refreshIconTimer: ReturnType<typeof setTimeout> | null = null
 
 const showAddServerDialog = ref(false)
 const initialDialogData = ref<any>(null)
 const installedCount = computed(() => installedServers.value.length)
+const isRefreshing = computed(() => installedLoading.value || marketplaceLoading.value)
 const installedIdSet = computed(() => new Set(installedServers.value.map((server) => server.id)))
 const filteredInstalledServers = computed(() => {
   const q = query.value.trim().toLowerCase()
@@ -121,9 +124,20 @@ const loadMarketplace = async (page: number, append: boolean): Promise<void> => 
 }
 
 const handleRefresh = async (): Promise<void> => {
-  await loadInstalledServers()
-  if (activeTab.value === 'marketplace') {
-    await loadMarketplace(1, false)
+  if (isRefreshing.value) return
+  if (refreshIconTimer) clearTimeout(refreshIconTimer)
+  refreshIconSpinning.value = true
+
+  try {
+    await loadInstalledServers()
+    if (activeTab.value === 'marketplace') {
+      await loadMarketplace(1, false)
+    }
+  } finally {
+    refreshIconTimer = setTimeout(() => {
+      refreshIconSpinning.value = false
+      refreshIconTimer = null
+    }, 500)
   }
 }
 
@@ -218,6 +232,10 @@ watch(
 )
 
 void loadInstalledServers()
+
+onBeforeUnmount(() => {
+  if (refreshIconTimer) clearTimeout(refreshIconTimer)
+})
 </script>
 
 <template>
@@ -312,9 +330,11 @@ void loadInstalledServers()
         <button
           type="button"
           class="h-9 w-9 rounded-lg border border-(--theme-border-base) bg-(--theme-bg-sidebar) hover:bg-(--theme-bg-hover-btn) flex items-center justify-center text-(--theme-text-main)"
+          :disabled="isRefreshing"
+          title="刷新"
           @click="handleRefresh"
         >
-          <RefreshCw :size="14" />
+          <RefreshCw :size="14" :class="refreshIconSpinning || isRefreshing ? 'animate-spin' : ''" />
         </button>
         <button
           type="button"
