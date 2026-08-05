@@ -186,6 +186,7 @@ declare global {
       }
       localConversations: {
         cleanup: () => Promise<{ cleared: true }>
+        onProgress: (callback: (progress: any) => void) => () => void
       }
       showFileContextMenu: (input: {
         path: string

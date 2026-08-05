@@ -211,6 +211,19 @@
           <div class="min-w-0">
             <div class="text-sm font-semibold text-(--theme-text-main)">清理本地会话</div>
             <p class="mt-1 text-xs text-(--theme-text-dim)">删除全部桌面本地对话及其上下文，配置和 IM 数据不会受影响。</p>
+            <p
+              v-if="isCleaningLocalConversations && localConversationCleanupProgress?.phase === 'deleting'"
+              class="mt-2 text-xs text-(--theme-text-dim)"
+            >
+              正在删除会话 {{ localConversationCleanupProgress.completed }} / {{ localConversationCleanupProgress.total }}（{{ localConversationCleanupPercent }}%）
+            </p>
+            <p
+              v-else-if="isCleaningLocalConversations && localConversationCleanupProgress?.phase === 'compacting'"
+              class="mt-2 flex items-center gap-1.5 text-xs text-(--theme-text-dim)"
+            >
+              <Loader2 class="size-3.5 animate-spin" />
+              正在压缩数据库…
+            </p>
           </div>
           <button
             type="button"
@@ -276,10 +289,23 @@ const appStorageSummary = ref<AppStorageSummary | null>(null)
 const appStorageError = ref('')
 const isLoadingAppStorage = ref(false)
 const isCleaningLocalConversations = ref(false)
+type LocalConversationCleanupProgress =
+  | { phase: 'deleting'; completed: number; total: number }
+  | { phase: 'compacting' }
+
+const localConversationCleanupProgress = ref<LocalConversationCleanupProgress | null>(null)
+let stopListeningForLocalConversationCleanupProgress: (() => void) | undefined
 
 const testIconComponent = computed(() => (isTestingConnection.value ? Loader2 : FlaskConical))
 
 const toolModelLabel = computed(() => selectedToolModel.value?.label)
+
+const localConversationCleanupPercent = computed(() => {
+  const progress = localConversationCleanupProgress.value
+  if (progress?.phase !== 'deleting') return 0
+  if (progress.total === 0) return 100
+  return Math.round((progress.completed / progress.total) * 100)
+})
 
 const formatBytes = (bytes: number): string => {
   if (bytes < 1024) return `${bytes} B`
@@ -315,6 +341,7 @@ const confirmLocalConversationCleanup = async () => {
     danger: true
   })
   if (!confirmed) return
+  localConversationCleanupProgress.value = { phase: 'deleting', completed: 0, total: 0 }
   isCleaningLocalConversations.value = true
   try {
     await window.api.localConversations.cleanup()
@@ -327,6 +354,7 @@ const confirmLocalConversationCleanup = async () => {
     })
   } finally {
     isCleaningLocalConversations.value = false
+    localConversationCleanupProgress.value = null
   }
 }
 
@@ -516,6 +544,26 @@ const openLearnMore = async () => {
 
 onMounted(async () => {
   void loadAppStorageSummary()
+  stopListeningForLocalConversationCleanupProgress = window.api.localConversations.onProgress((progress) => {
+    if (!progress || typeof progress !== 'object' || !('phase' in progress)) return
+    if (
+      progress.phase === 'deleting' &&
+      'completed' in progress &&
+      typeof progress.completed === 'number' &&
+      'total' in progress &&
+      typeof progress.total === 'number'
+    ) {
+      localConversationCleanupProgress.value = {
+        phase: 'deleting',
+        completed: progress.completed,
+        total: progress.total
+      }
+      return
+    }
+    if (progress.phase === 'compacting') {
+      localConversationCleanupProgress.value = { phase: 'compacting' }
+    }
+  })
   await loadToolModels()
   await loadToolModelSelection()
   document.addEventListener('mousedown', onGlobalPointerDown, true)
@@ -523,6 +571,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  stopListeningForLocalConversationCleanupProgress?.()
   document.removeEventListener('mousedown', onGlobalPointerDown, true)
   document.removeEventListener('keydown', onGlobalKeyDown, true)
 })

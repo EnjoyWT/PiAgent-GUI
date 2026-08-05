@@ -6,7 +6,7 @@ import { getDefaultCoreV2DbPath } from '../core-v2/sqlite-db.ts'
 
 let cleanupPromise: Promise<{ cleared: true }> | null = null
 
-export const cleanupLocalConversations = (): Promise<{ cleared: true }> => {
+export const cleanupLocalConversations = (onProgress?: (progress: unknown) => void): Promise<{ cleared: true }> => {
   if (cleanupPromise) return cleanupPromise
   const entryPath = join(
     dirname(fileURLToPath(import.meta.url)),
@@ -15,7 +15,11 @@ export const cleanupLocalConversations = (): Promise<{ cleared: true }> => {
   cleanupPromise = new Promise<{ cleared: true }>((resolve, reject) => {
     const worker = fork(entryPath)
     worker.once('error', reject)
-    worker.once('message', (message: unknown) => {
+    worker.on('message', (message: unknown) => {
+      if (typeof message === 'object' && message && 'kind' in message && message.kind === 'progress') {
+        onProgress?.(message)
+        return
+      }
       worker.kill()
       if (typeof message === 'object' && message && 'kind' in message && message.kind === 'done') {
         resolve({ cleared: true })

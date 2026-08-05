@@ -181,7 +181,12 @@ const api = {
     getSummary: (): Promise<AppStorageSummary> => ipcRenderer.invoke('app-storage:get-summary')
   },
   localConversations: {
-    cleanup: (): Promise<{ cleared: true }> => ipcRenderer.invoke('local-conversations:cleanup')
+    cleanup: (): Promise<{ cleared: true }> => ipcRenderer.invoke('local-conversations:cleanup'),
+    onProgress: (callback: (progress: any) => void): (() => void) => {
+      const listener = (_: Electron.IpcRendererEvent, progress: any) => callback(progress)
+      ipcRenderer.on('local-conversations:cleanup-progress', listener)
+      return () => ipcRenderer.removeListener('local-conversations:cleanup-progress', listener)
+    }
   },
   showFileContextMenu: (input: {
     path: string
