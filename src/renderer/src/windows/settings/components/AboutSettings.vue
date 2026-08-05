@@ -178,9 +178,7 @@ const primaryIcon = computed(() => {
 })
 
 const primaryIconClass = computed(() =>
-  updateStatus.phase === 'checking' ||
-  updateStatus.phase === 'downloading' ||
-  updateStatus.phase === 'installing'
+  updateStatus.phase === 'checking' || updateStatus.phase === 'installing'
     ? 'animate-spin'
     : ''
 )

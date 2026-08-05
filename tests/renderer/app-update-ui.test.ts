@@ -25,6 +25,14 @@ test('About settings uses one primary update button with internal progress and a
   assert.match(source, /关闭关于页面不会中断/)
 })
 
+test('About settings does not spin the primary icon while downloading', () => {
+  const source = readSource('src/renderer/src/windows/settings/components/AboutSettings.vue')
+  const match = source.match(/const primaryIconClass = computed\(\(\) =>[\s\S]*?\n\)/)
+
+  assert.ok(match, 'primaryIconClass computed block should exist')
+  assert.doesNotMatch(match[0], /updateStatus\.phase === 'downloading'/)
+})
+
 test('App sidebar exposes a clickable update badge that opens About settings', () => {
   const sidebarSource = readSource('src/renderer/src/components/layout/AppSidebar.vue')
   const appSource = readSource('src/renderer/src/App.vue')
