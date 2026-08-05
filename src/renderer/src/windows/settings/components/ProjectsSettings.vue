@@ -1,6 +1,6 @@
 <template>
-  <div class="flex-1 flex flex-col gap-3 overflow-y-auto">
-    <div class="bg-(--theme-bg-main) border border-(--theme-border-base) rounded-2xl p-6 shadow-sm space-y-5">
+  <div class="flex-1 min-w-0 flex flex-col gap-3 overflow-y-auto">
+    <div class="min-w-0 bg-(--theme-bg-main) border border-(--theme-border-base) rounded-2xl p-6 shadow-sm space-y-5">
       <div class="space-y-2">
         <h3 class="text-lg font-bold text-(--theme-text-bright)">项目管理</h3>
         <p class="text-sm text-(--theme-text-dim) leading-relaxed">
@@ -8,7 +8,7 @@
         </p>
       </div>
 
-      <div class="space-y-4">
+      <div class="min-w-0 space-y-4">
         <div
           v-if="workspaces.length === 0"
           class="text-center py-12 border-2 border-dashed border-(--theme-border-base) rounded-xl"
@@ -17,19 +17,19 @@
           <p class="text-sm text-(--theme-text-dim) font-medium">暂无项目</p>
         </div>
 
-        <div v-else class="grid gap-3">
+        <div v-else class="grid min-w-0 gap-3">
           <div
             v-for="ws in workspaces"
             :key="ws.path"
-            class="group flex items-center justify-between p-4 rounded-xl border border-(--theme-border-base) bg-(--theme-bg-sidebar) hover:border-(--theme-accent)/30 hover:shadow-sm transition-all"
+            class="group flex min-w-0 items-center justify-between p-4 rounded-xl border border-(--theme-border-base) bg-(--theme-bg-sidebar) hover:border-(--theme-accent)/30 hover:shadow-sm transition-all"
           >
-            <div class="flex items-center gap-4 min-w-0">
+            <div class="flex flex-1 min-w-0 items-center gap-4">
               <div
                 class="w-10 h-10 rounded-lg bg-(--theme-bg-hover-item) flex items-center justify-center shrink-0 group-hover:bg-(--theme-bg-active-item) transition-colors border border-(--theme-border-base)"
               >
                 <FolderOpen :size="20" class="text-(--theme-text-dim) group-hover:text-(--theme-accent)" />
               </div>
-              <div class="min-w-0">
+              <div class="min-w-0 flex-1">
                 <h4 class="text-[14px] font-semibold text-(--theme-text-bright) truncate">
                   {{ ws.name || '未命名项目' }}
                 </h4>
