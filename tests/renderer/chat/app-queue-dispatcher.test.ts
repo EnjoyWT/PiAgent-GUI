@@ -197,3 +197,71 @@ test('aborted title cleanup runs before its async refresh lets a later run settl
 
   assert.deepEqual(generatedTitles, [])
 })
+
+test('failed title cleanup runs before its async refresh lets a later run finish', async () => {
+  const titleLifecycleCalls: Array<{ threadId: string; status: string }> = []
+  const generatedTitles: string[] = []
+  const coordinator = createThreadTitleCoordinator({
+    buildFallbackTitle: () => '首条消息',
+    generateTitle: async ({ text }) => {
+      generatedTitles.push(text)
+      return '精炼标题'
+    },
+    persistTitle: async () => {},
+    getCurrentTitle: () => '首条消息',
+    isThreadIdle: () => true
+  })
+  coordinator.reserve({ threadId: 'thread-1', currentTitle: 'newchat', text: '首条消息' })
+
+  let releaseFailedRefresh: (() => void) | undefined
+  const failedRefresh = new Promise<void>((resolve) => {
+    releaseFailedRefresh = resolve
+  })
+
+  Object.assign(globalThis, {
+    window: {
+      api: {
+        runtime: {
+          getQueuedMessages: async () => []
+        }
+      }
+    }
+  })
+
+  const dispatcher = useQueueDispatcher({
+    activeThread: ref(null),
+    messages: ref([]),
+    inputText: ref(''),
+    composerAttachments: ref([]),
+    currentModelSupportsImageInput: computed(() => true),
+    runtimeStatus: ref({ text: '', tone: 'idle' as const }),
+    runtimeBinding: ref(null),
+    activeRunByThreadId: new Map(),
+    getAgentRunMap: () => new Map(),
+    getThreadRowById: () => null,
+    reserveThreadTitleFromText: () => {},
+    refineThreadTitleAfterRun: (input) => {
+      titleLifecycleCalls.push(input)
+      void coordinator.refineAfterRun(input)
+    },
+    ensureThreadStarted: async (thread) => thread,
+    ensureMessageBuffer: () => [],
+    setThreadStreaming: () => {},
+    scrollToBottom: () => {},
+    loadLatestThreadWindow: async () => failedRefresh,
+    confirmTextOnlyFallback: async () => true,
+    isStreaming: computed(() => false)
+  })
+
+  const failedSettled = dispatcher.onRunSettled('thread-1', 'run-1', 'failed')
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.deepEqual(titleLifecycleCalls, [{ threadId: 'thread-1', status: 'failed' }])
+
+  releaseFailedRefresh?.()
+  await failedSettled
+  await dispatcher.onRunSettled('thread-1', 'run-2', 'finished')
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.deepEqual(generatedTitles, [])
+})

@@ -689,7 +689,7 @@ export const useQueueDispatcher = (options: QueueDispatcherOptions): QueueDispat
   }
 
   const onRunSettled = async (threadId: string, runId: string, status: string): Promise<void> => {
-    if (status === 'aborted') {
+    if (status === 'aborted' || status === 'failed') {
       options.refineThreadTitleAfterRun({ threadId, status })
     }
 
@@ -770,7 +770,7 @@ export const useQueueDispatcher = (options: QueueDispatcherOptions): QueueDispat
       void dispatchQueuedHead(threadId)
     }
 
-    if (status === 'finished' || status === 'failed' || status === 'aborted') {
+    if (status === 'finished') {
       options.refineThreadTitleAfterRun({ threadId, status })
     }
   }
