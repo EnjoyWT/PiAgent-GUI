@@ -173,6 +173,41 @@ test('runtime bridge exposes extension-registered plugin tools for runtime catal
   }
 })
 
+test('runtime bridge suppresses Skill metadata from the session prompt but keeps an enabled catalog', async () => {
+  const tempRoot = mkdtempSync(resolve(os.tmpdir(), 'piagent-runtime-skills-'))
+
+  try {
+    const workspacePath = resolve(tempRoot, 'workspace')
+    const skillDir = resolve(tempRoot, 'skills', 'pdf')
+    mkdirSync(workspacePath, { recursive: true })
+    mkdirSync(skillDir, { recursive: true })
+    writeFileSync(
+      resolve(skillDir, 'SKILL.md'),
+      ['---', 'name: pdf', 'description: Work with PDF files', '---', '', '# PDF'].join('\n'),
+      'utf8'
+    )
+
+    const bridge = new CodingAgentRuntimeBridge({ core: createCore() })
+    const loader = await (bridge as any).createResourceLoader(
+      workspacePath,
+      'thread-1',
+      { buildSystemPrompt: () => '' },
+      'conversation-1',
+      { skillPaths: [resolve(tempRoot, 'skills')], extensionPaths: [], extensionFactories: [] }
+    )
+
+    assert.equal(loader.getSkills().skills.find((skill: { name: string }) => skill.name === 'pdf')?.disableModelInvocation, true)
+    assert.equal(
+      (bridge as any).skillCatalogByConversationId
+        .get('conversation-1')
+        .some((skill: { name: string }) => skill.name === 'pdf'),
+      true
+    )
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true })
+  }
+})
+
 test('runtime bridge resolves Gemini REST-discovered models with the native Google API', async () => {
   upsertProvider({
     id: 'google',
@@ -1185,4 +1220,3 @@ test('runtime session settings clone shell prefix without writing pi settings.js
     rmSync(tempRoot, { recursive: true, force: true })
   }
 })
-
