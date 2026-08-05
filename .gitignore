@@ -76,6 +76,7 @@ resources/computer-use-helper/verification/
 .claude/
 .alma-snapshots/
 .gitnexus/
+.worktrees/
 
 # Private/internal materials are intentionally not part of the public repo.
 /docs/
