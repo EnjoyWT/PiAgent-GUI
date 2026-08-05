@@ -67,7 +67,11 @@ type QueueDispatcherOptions = {
   activeRunByThreadId: Map<string, AgentRun>
   getAgentRunMap: (threadId: string) => Map<string, AgentRun>
   getThreadRowById: (threadId: string) => ThreadRow | null
-  ensureThreadTitleFromText: (thread: ThreadRow, text: string, imageCount?: number) => Promise<void>
+  reserveThreadTitleFromText: (thread: ThreadRow, text: string, imageCount?: number) => void
+  refineThreadTitleAfterRun: (input: {
+    threadId: string
+    status: 'finished' | 'failed' | 'aborted'
+  }) => void
   ensureThreadStarted: (thread: ThreadRow) => Promise<ThreadRow>
   ensureMessageBuffer: (threadId: string) => ChatMessage[]
   setThreadStreaming: (threadId: string, value: boolean) => void
@@ -481,7 +485,7 @@ export const useQueueDispatcher = (options: QueueDispatcherOptions): QueueDispat
     }
 
     try {
-      await options.ensureThreadTitleFromText(
+      options.reserveThreadTitleFromText(
         thread,
         text,
         dispatchOptions?.promptOptions?.images?.length ?? 0
@@ -760,6 +764,10 @@ export const useQueueDispatcher = (options: QueueDispatcherOptions): QueueDispat
       controller.queue.splice(0, controller.queue.length)
     } else if (action.type === 'none' && shouldAutoFlushLocalQueue(controller)) {
       void dispatchQueuedHead(threadId)
+    }
+
+    if (status === 'finished' || status === 'failed' || status === 'aborted') {
+      options.refineThreadTitleAfterRun({ threadId, status })
     }
   }
 

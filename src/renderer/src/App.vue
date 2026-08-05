@@ -253,6 +253,10 @@ import {
 } from './utils/app-composer-actions'
 import { createRuntimeEventBridge } from './utils/app-runtime-event-bridge'
 import {
+  buildFallbackThreadTitle,
+  createThreadTitleCoordinator
+} from './utils/thread-title-coordinator'
+import {
   applyContextCompactionEventToMessages,
   isContextCompactionEvent
 } from './utils/context-compaction-messages'
@@ -485,7 +489,8 @@ const {
   activeRunByThreadId,
   getAgentRunMap,
   getThreadRowById,
-  ensureThreadTitleFromText: (...args) => ensureThreadTitleFromText(...args),
+  reserveThreadTitleFromText: (...args) => reserveThreadTitleFromText(...args),
+  refineThreadTitleAfterRun: (input) => refineThreadTitleAfterRun(input),
   ensureThreadStarted: (...args) => ensureThreadStarted(...args),
   ensureMessageBuffer: (threadId) => ensureMessageBuffer(threadId),
   setThreadStreaming,
@@ -846,20 +851,47 @@ const ensureThreadStarted = async (thread: ThreadRow): Promise<ThreadRow> => {
   return updated ?? { ...thread, started_at: now }
 }
 
-const ensureThreadTitleFromText = async (
+const threadTitleCoordinator = createThreadTitleCoordinator({
+  buildFallbackTitle: buildFallbackThreadTitle,
+  generateTitle: async ({ text, imageCount }) => {
+    const result = await window.api.coreV2.localThreads.generateTitle({ text, imageCount })
+    return result.title
+  },
+  persistTitle: async (threadId, title) => {
+    await window.api.coreV2.localThreads.update(threadId, { title })
+    patchThreadRow(threadId, { title })
+  },
+  getCurrentTitle: (threadId) => getThreadRowById(threadId)?.title ?? null,
+  isThreadIdle: (threadId) =>
+    !Boolean(streamingByThreadId.value[threadId]) && !activeRunByThreadId.has(threadId)
+})
+
+const reserveThreadTitleFromText = (
   thread: ThreadRow,
   text: string,
   imageCount = 0
-): Promise<void> => {
-  if (thread.title && thread.title !== 'newchat') return
-  try {
-    const result = await window.api.coreV2.localThreads.generateTitle({ text, imageCount })
-    const title = result.title?.trim() || (imageCount > 0 ? '图片消息' : '新对话')
-    await window.api.coreV2.localThreads.update(thread.id, { title })
-    patchThreadRow(thread.id, { title })
-  } catch (err) {
-    console.error('Update thread title failed', err)
-  }
+): void => {
+  const title = threadTitleCoordinator.reserve({
+    threadId: thread.id,
+    currentTitle: thread.title,
+    text,
+    imageCount
+  })
+  if (!title) return
+
+  patchThreadRow(thread.id, { title })
+  void window.api.coreV2.localThreads.update(thread.id, { title }).catch((err) => {
+    console.error('Persist fallback thread title failed', err)
+  })
+}
+
+const refineThreadTitleAfterRun = (input: {
+  threadId: string
+  status: 'finished' | 'failed' | 'aborted'
+}): void => {
+  window.setTimeout(() => {
+    void threadTitleCoordinator.refineAfterRun(input)
+  }, 250)
 }
 
 // ── 滚动 ──────────────────────────────────────────────────────────
