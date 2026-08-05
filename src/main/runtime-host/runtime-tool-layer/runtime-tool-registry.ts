@@ -63,6 +63,19 @@ const CROSS_SURFACE_TOOL_NAMES = new Set([
   'conversationQueryTool'
 ])
 
+const CORE_TOOL_NAMES = new Set([
+  'read',
+  'bash',
+  'edit',
+  'write',
+  'find',
+  'grep',
+  'ls',
+  'capabilitySearch',
+  'capabilityActivate',
+  'readSkillTool'
+])
+
 const uniqueSorted = <T extends string>(values: Iterable<T>): T[] =>
   Array.from(new Set(values)).sort((left, right) => left.localeCompare(right)) as T[]
 
@@ -80,7 +93,14 @@ const inferToolsets = (
   tool: Pick<ToolDefinition, 'name'>,
   source: RuntimeToolRegistrySource
 ): RuntimeToolsetId[] => {
-  if (tool.name === 'discoverBuiltinToolsTool') return ['discovery']
+  if (
+    tool.name === 'discoverBuiltinToolsTool' ||
+    tool.name === 'capabilitySearch' ||
+    tool.name === 'capabilityActivate' ||
+    tool.name === 'readSkillTool'
+  ) {
+    return ['discovery']
+  }
   if (source === 'mcp') return ['mcp']
   if (source === 'plugin') return ['plugin']
 
@@ -124,10 +144,8 @@ const inferScopes = (
   return explicitScopes?.length ? uniqueSorted(explicitScopes) : ['local', 'im']
 }
 
-const inferDefaultActive = (toolsets: RuntimeToolsetId[]): boolean => {
-  if (toolsets.includes('presentation')) return true
-  return true
-}
+const inferDefaultActive = (tool: Pick<ToolDefinition, 'name'>): boolean =>
+  CORE_TOOL_NAMES.has(tool.name)
 
 export const buildRuntimeToolRegistry = (
   groups: RuntimeToolRegistryGroup[]
@@ -155,7 +173,7 @@ export const buildRuntimeToolRegistry = (
         scopes: existing ? uniqueSorted([...existing.scopes, ...scopes]) : scopes,
         defaultActive:
           existing?.defaultActive ??
-          inferDefaultActive(existing ? [...existing.toolsets, ...toolsets] : toolsets)
+          inferDefaultActive(tool)
       })
     }
   }

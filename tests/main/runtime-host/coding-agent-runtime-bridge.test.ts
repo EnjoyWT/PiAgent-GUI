@@ -38,7 +38,7 @@ registerHooks({
 const { InMemoryCoreService } = await import('../../../src/main/core-v2/in-memory-core-service.ts')
 const { CodingAgentRuntimeBridge, buildAgentSessionToolAllowlist, getAgentPluginExtensionTools } =
   await import('../../../src/main/runtime-host/coding-agent-runtime-bridge.ts')
-const { replaceProviderModels, setProviderApiKey, upsertProvider } =
+const { getSetting, replaceProviderModels, setProviderApiKey, setSetting, upsertProvider } =
   await import('../../../src/main/db/config-db.ts')
 
 const createCore = () => {
@@ -169,6 +169,49 @@ test('runtime bridge exposes extension-registered plugin tools for runtime catal
       ['memos_search']
     )
   } finally {
+    rmSync(tempRoot, { recursive: true, force: true })
+  }
+})
+
+test('runtime bridge exposes enabled Skills to the framework loader and filters disabled Skills', async () => {
+  const tempRoot = mkdtempSync(resolve(os.tmpdir(), 'piagent-runtime-skills-'))
+  const previousDisabledSkills = getSetting('skills_disabled')
+
+  try {
+    const workspacePath = resolve(tempRoot, 'workspace')
+    const pdfSkillDir = resolve(tempRoot, 'skills', 'pdf')
+    const textSkillDir = resolve(tempRoot, 'skills', 'text')
+    mkdirSync(workspacePath, { recursive: true })
+    mkdirSync(pdfSkillDir, { recursive: true })
+    mkdirSync(textSkillDir, { recursive: true })
+    writeFileSync(
+      resolve(pdfSkillDir, 'SKILL.md'),
+      ['---', 'name: pdf', 'description: Work with PDF files', '---', '', '# PDF'].join('\n'),
+      'utf8'
+    )
+    writeFileSync(
+      resolve(textSkillDir, 'SKILL.md'),
+      ['---', 'name: text', 'description: Work with text files', '---', '', '# Text'].join('\n'),
+      'utf8'
+    )
+    setSetting('skills_disabled', JSON.stringify(['text']))
+
+    const bridge = new CodingAgentRuntimeBridge({ core: createCore() })
+    const loader = await (bridge as any).createResourceLoader(
+      workspacePath,
+      'thread-1',
+      { buildSystemPrompt: () => '' },
+      'conversation-1',
+      { skillPaths: [resolve(tempRoot, 'skills')], extensionPaths: [], extensionFactories: [] }
+    )
+
+    const skills = loader.getSkills().skills
+    const pdf = skills.find((skill: { name: string }) => skill.name === 'pdf')
+    assert.ok(pdf)
+    assert.notEqual(pdf.disableModelInvocation, true)
+    assert.equal(skills.some((skill: { name: string }) => skill.name === 'text'), false)
+  } finally {
+    setSetting('skills_disabled', previousDisabledSkills ?? '')
     rmSync(tempRoot, { recursive: true, force: true })
   }
 })
@@ -1185,4 +1228,3 @@ test('runtime session settings clone shell prefix without writing pi settings.js
     rmSync(tempRoot, { recursive: true, force: true })
   }
 })
-

@@ -106,7 +106,14 @@ import {
   resolveRuntimeTools,
   type RuntimeToolResolution
 } from './runtime-tool-layer/runtime-tool-resolver.ts'
-import { createDiscoverBuiltinToolsTool } from '../tools/discover-builtin-tools-tool.ts'
+import {
+  createRuntimeCapabilityState,
+  type RuntimeCapabilityState
+} from './runtime-tool-layer/runtime-capability-state.ts'
+import {
+  createCapabilityActivateTool,
+  createCapabilitySearchTool
+} from '../tools/runtime-capability-tools.ts'
 import { createPlanTools } from '../tools/plan-tool.ts'
 import {
   RuntimeUserInteractionController,
@@ -126,6 +133,7 @@ type RuntimeToolState = {
   registry: RuntimeToolRegistryEntry[]
   catalog: RuntimeToolCatalogEntry[]
   enabledToolsets: RuntimeToolsetId[]
+  activeToolNames: string[]
 }
 
 export type QueueStreamingPromptInput = {
@@ -195,10 +203,18 @@ const uniqueToolDefinitions = (tools: ToolDefinition[]): ToolDefinition[] => {
   return [...byName.values()]
 }
 
-const buildActiveRuntimeToolCatalog = (
-  resolution: RuntimeToolResolution
-): RuntimeToolCatalogEntry[] =>
-  buildRuntimeToolCatalog(resolution.entries.filter((entry) => entry.status === 'active'))
+const estimateToolSchemaTokens = (parameters: unknown): number =>
+  Math.max(1, Math.ceil(JSON.stringify(parameters ?? {}).length / 4))
+
+const capabilitySourceVersions = (
+  catalog: RuntimeToolCatalogEntry[]
+): Record<string, string> =>
+  Object.fromEntries(
+    catalog.map((entry) => [
+      entry.name,
+      `${entry.source}:${JSON.stringify(entry.parameters ?? {})}`
+    ])
+  )
 
 export const buildAgentSessionToolAllowlist = (
   resolution: Pick<RuntimeToolResolution, 'activeToolNames'>
@@ -468,6 +484,7 @@ export class CodingAgentRuntimeBridge {
   private modelRuntime: ModelRuntime | null = null
   private modelRuntimeInit: Promise<ModelRuntime> | null = null
   private readonly sessionsByConversationId = new Map<string, HeadlessRuntimeSession>()
+  private readonly capabilityStateByConversationId = new Map<string, RuntimeCapabilityState>()
   private readonly abortRequestedConversationIds = new Set<string>()
   private readonly providerGenerationById = new Map<string, number>()
   private readonly conversationIdByInteractionThreadId = new Map<string, string>()
@@ -654,6 +671,7 @@ export class CodingAgentRuntimeBridge {
     if (!existing) return
     this.disposeSession(existing)
     this.sessionsByConversationId.delete(resolvedConversationId)
+    this.capabilityStateByConversationId.delete(resolvedConversationId)
     this.activeRunByConversationId.delete(resolvedConversationId)
     this.forgetInteractionThreadMapping(resolvedConversationId)
   }
@@ -696,6 +714,7 @@ export class CodingAgentRuntimeBridge {
       this.disposeSession(session)
     }
     this.sessionsByConversationId.clear()
+    this.capabilityStateByConversationId.clear()
     this.conversationIdByInteractionThreadId.clear()
     this.interactionThreadIdByConversationId.clear()
     this.activeRunByConversationId.clear()
@@ -1254,17 +1273,65 @@ export class CodingAgentRuntimeBridge {
       surface: surface.sourceKind,
       toolProfileId: policy.toolProfileId ?? null,
       registry,
-      catalog: buildActiveRuntimeToolCatalog(resolution),
-      enabledToolsets: resolution.enabledToolsets
+      catalog: buildRuntimeToolCatalog(resolution.entries),
+      enabledToolsets: resolution.enabledToolsets,
+      activeToolNames: buildAgentSessionToolAllowlist(resolution)
     }
-    const discoverBuiltinToolsTool = createDiscoverBuiltinToolsTool({
+    let liveSession: RuntimeSession | null = null
+    let capabilityState: RuntimeCapabilityState | null = null
+    const capabilitySearchTool = createCapabilitySearchTool({
       getCatalog: () => runtimeToolState.catalog
+    })
+    const capabilityActivateTool = createCapabilityActivateTool({
+      activate: (names) => {
+        const accepted: string[] = []
+        const rejected: Array<{ name: string; reason: string }> = []
+        for (const name of names) {
+          const entry = runtimeToolState.catalog.find((candidate) => candidate.name === name)
+          if (!entry) {
+            rejected.push({ name, reason: 'Unknown runtime capability.' })
+            continue
+          }
+          if (entry.status === 'blocked') {
+            rejected.push({ name, reason: entry.blockedReason ?? 'Capability is unavailable.' })
+            continue
+          }
+          accepted.push(name)
+        }
+        if (accepted.length === 0) return { activated: [], rejected }
+        capabilityState?.activate(
+          accepted
+            .map((name) => runtimeToolState.catalog.find((entry) => entry.name === name))
+            .filter((entry): entry is RuntimeToolCatalogEntry => Boolean(entry))
+            .map((entry) => ({
+              name: entry.name,
+              schemaTokens: estimateToolSchemaTokens(entry.parameters),
+              sourceVersion: capabilitySourceVersions([entry])[entry.name]
+            })),
+          Date.now()
+        )
+        resolution = resolveRuntimeTools(runtimeToolState.registry, {
+          surface: runtimeToolState.surface,
+          toolProfileId: runtimeToolState.toolProfileId,
+          activeToolNames:
+            capabilityState?.selectForTurn(
+              Date.now(),
+              capabilitySourceVersions(runtimeToolState.catalog)
+            ) ?? [...runtimeToolState.activeToolNames, ...accepted]
+        })
+        const nextAllowlist = buildAgentSessionToolAllowlist(resolution)
+        liveSession?.setActiveToolsByName(nextAllowlist)
+        runtimeToolState.catalog = buildRuntimeToolCatalog(resolution.entries)
+        runtimeToolState.enabledToolsets = resolution.enabledToolsets
+        runtimeToolState.activeToolNames = nextAllowlist
+        return { activated: accepted.sort(), rejected }
+      }
     })
     registry = buildRuntimeToolRegistry([
       { source: 'builtin', tools: builtinToolDefinitions, scopes: ['local', 'im'] },
       {
         source: 'framework',
-        tools: [discoverBuiltinToolsTool, ...safeFrameworkTools],
+        tools: [capabilitySearchTool, capabilityActivateTool, ...safeFrameworkTools],
         scopes: ['local', 'im']
       },
       { source: 'mcp', tools: sandboxMcpTools, scopes: ['local', 'im'] },
@@ -1277,14 +1344,34 @@ export class CodingAgentRuntimeBridge {
       toolProfileId: policy.toolProfileId ?? null
     })
     runtimeToolState.registry = registry
-    runtimeToolState.catalog = buildActiveRuntimeToolCatalog(resolution)
+    runtimeToolState.catalog = buildRuntimeToolCatalog(resolution.entries)
+    runtimeToolState.enabledToolsets = resolution.enabledToolsets
+    capabilityState =
+      this.capabilityStateByConversationId.get(conversation.id) ??
+      createRuntimeCapabilityState({
+        coreToolNames: buildAgentSessionToolAllowlist(resolution),
+        maxToolCount: 8,
+        maxSchemaTokens: 3000
+      })
+    this.capabilityStateByConversationId.set(conversation.id, capabilityState)
+    resolution = resolveRuntimeTools(registry, {
+      surface: surface.sourceKind,
+      toolProfileId: policy.toolProfileId ?? null,
+      activeToolNames: capabilityState.selectForTurn(
+        Date.now(),
+        capabilitySourceVersions(runtimeToolState.catalog)
+      )
+    })
+    runtimeToolState.catalog = buildRuntimeToolCatalog(resolution.entries)
     runtimeToolState.enabledToolsets = resolution.enabledToolsets
     const sessionToolAllowlist = buildAgentSessionToolAllowlist(resolution)
+    runtimeToolState.activeToolNames = sessionToolAllowlist
     const customTools = uniqueToolDefinitions([
       // createAgentSession installs its own builtin tools. Register these definitions too so
       // the session registry replaces those defaults with the guarded implementations.
       ...builtinToolDefinitions,
-      discoverBuiltinToolsTool,
+      capabilitySearchTool,
+      capabilityActivateTool,
       ...safeFrameworkTools,
       ...sandboxMcpTools,
       ...manifestPluginTools,
@@ -1310,6 +1397,7 @@ export class CodingAgentRuntimeBridge {
       contextWindow: modelDef.contextWindow ?? null,
       maxTokens: modelDef.maxTokens ?? null
     })
+    liveSession = session
     this.installXiaomiReasoningContentPayloadCompat(session as any)
     ;(session as any).setActiveToolsByName?.(sessionToolAllowlist)
     const contextSeedApplied = await this.applyContextSeed(
@@ -1337,6 +1425,9 @@ export class CodingAgentRuntimeBridge {
       onEventsFlushed: async (rows) => this.persistRuntimeEvents(conversation.id, rows),
       resolveCanonicalRunId: (agentRunId) => this.resolveCoreRunId(conversation.id, agentRunId),
       onAppEvent: (appEvent) => {
+        if (appEvent.type === 'agent.tool.started') {
+          capabilityState?.markUsed(appEvent.tool.name, Date.now())
+        }
         const mappedAppEvent = this.mapAppEventRunId(conversation.id, appEvent)
         if (!mappedAppEvent) return
         this.emitAppEvent?.(interactionThreadId, mappedAppEvent)
@@ -1897,21 +1988,26 @@ export class CodingAgentRuntimeBridge {
           ])
         )
       })(),
-      skillsOverride: (current) => ({
-        ...({
-          [legacySkillDoctorKey]: Reflect.get(current, legacySkillDoctorKey)
-        } as Omit<typeof current, 'skills'>),
-        skills: current.skills.map((skill) =>
-          disabledSet.has(skill.name) ? { ...skill, disableModelInvocation: true } : skill
-        )
-      }),
+      skillsOverride: (current) => {
+        const availableSkills = current.skills.filter((skill) => !disabledSet.has(skill.name))
+        return {
+          ...({
+            [legacySkillDoctorKey]: Reflect.get(current, legacySkillDoctorKey)
+          } as Omit<typeof current, 'skills'>),
+          skills: availableSkills
+        }
+      },
       appendSystemPromptOverride: (base) => {
         const systemPrompt = surface.buildSystemPrompt({
           workspacePath,
           threadId,
           appConfigDir: this.appConfigDir
         })
-        const finalPrompt = memoryBlock ? `${systemPrompt}\n\n${memoryBlock}` : systemPrompt
+        const runtimeCapabilityGuidance =
+          'For a non-core tool, first call capabilitySearch, then capabilityActivate before use. Do not assume unavailable capabilities exist.'
+        const finalPrompt = [systemPrompt, memoryBlock, runtimeCapabilityGuidance]
+          .filter(Boolean)
+          .join('\n\n')
         return [...base, finalPrompt]
       }
     })
@@ -2315,47 +2411,6 @@ export class CodingAgentRuntimeBridge {
     }
   }
 
-  private shouldPersistAssistantTurn(turn: AgentTurnProjection): boolean {
-    return (
-      turn.toolCalls.length > 0 ||
-      turn.timelineItems.some(
-        (item) =>
-          item.kind === 'tool' ||
-          item.kind === 'question_answer' ||
-          item.kind === 'questionnaire_question' ||
-          item.kind === 'questionnaire_answer' ||
-          (item.kind === 'text' && item.text.trim().length > 0)
-      ) ||
-      (turn.status === 'error' && Boolean(turn.errorMessage?.trim()))
-    )
-  }
-
-  private resolveAssistantTurnCreatedAt(
-    run: AgentRunProjection,
-    turn: AgentTurnProjection
-  ): number {
-    if (typeof turn.endedAt === 'number') return turn.endedAt
-
-    let latestTimelineAt: number | undefined
-    for (const item of turn.timelineItems) {
-      if (item.kind !== 'text' && item.kind !== 'thinking') continue
-      const candidate =
-        typeof item.endedAt === 'number'
-          ? item.endedAt
-          : typeof item.startedAt === 'number'
-            ? item.startedAt
-            : undefined
-      if (candidate == null) continue
-      latestTimelineAt =
-        latestTimelineAt == null ? candidate : Math.max(latestTimelineAt, candidate)
-    }
-
-    if (latestTimelineAt != null) return latestTimelineAt
-    if (typeof turn.startedAt === 'number') return turn.startedAt
-    if (typeof run.endedAt === 'number') return run.endedAt
-    return run.startedAt
-  }
-
   private async persistLocalAssistantMessages(
     threadId: string,
     requestedRun: AgentRun,
@@ -2363,27 +2418,7 @@ export class CodingAgentRuntimeBridge {
   ): Promise<void> {
     const host = await getLocalThreadHostService()
 
-    let persistedTurnMessage = false
-    for (const turn of projection.turns) {
-      if (!this.shouldPersistAssistantTurn(turn)) continue
-      const content = turn.text || (turn.status === 'error' ? turn.errorMessage?.trim() || '' : '')
-      const contentJson: ChatMessageContent | null = content
-        ? {
-            version: 1,
-            blocks: [{ type: 'text', text: content }]
-          }
-        : null
-      host.addMessage(threadId, 'assistant', content, requestedRun.id, contentJson, {
-        includeInAgentContext: requestedRun.triggerKind === 'automation' ? false : undefined,
-        agentTurnId: turn.agentTurnId ?? null,
-        createdAt: this.resolveAssistantTurnCreatedAt(projection, turn)
-      })
-      persistedTurnMessage = true
-    }
-
-    if (persistedTurnMessage) return
-
-    const text = projection.text.trim()
+    const text = projection.text.trim() || extractFirstTurnError(projection.turns) || ''
     if (!text) return
     host.addMessage(
       threadId,

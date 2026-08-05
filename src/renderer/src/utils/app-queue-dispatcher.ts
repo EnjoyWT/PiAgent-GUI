@@ -25,6 +25,7 @@ import {
   resetQueueControllerAfterAbort
 } from './app-queue-state'
 import { removeOptimisticAssistantPlaceholders } from './pending-assistant-placeholder'
+import type { ThreadTitleRunStatus } from './thread-title-coordinator'
 
 export type DispatchPolicy = 'auto' | 'paused'
 
@@ -67,7 +68,11 @@ type QueueDispatcherOptions = {
   activeRunByThreadId: Map<string, AgentRun>
   getAgentRunMap: (threadId: string) => Map<string, AgentRun>
   getThreadRowById: (threadId: string) => ThreadRow | null
-  ensureThreadTitleFromText: (thread: ThreadRow, text: string, imageCount?: number) => Promise<void>
+  reserveThreadTitleFromText: (thread: ThreadRow, text: string, imageCount?: number) => void
+  refineThreadTitleAfterRun: (input: {
+    threadId: string
+    status: ThreadTitleRunStatus
+  }) => void
   ensureThreadStarted: (thread: ThreadRow) => Promise<ThreadRow>
   ensureMessageBuffer: (threadId: string) => ChatMessage[]
   setThreadStreaming: (threadId: string, value: boolean) => void
@@ -161,6 +166,13 @@ const createThreadQueueController = (): ThreadQueueController =>
     postRunAction: { type: 'none' } as PostRunAction,
     actionRevision: 0
   }) as ThreadQueueController
+
+const toThreadTitleRunStatus = (status: string): ThreadTitleRunStatus | null => {
+  if (status === 'done') return 'finished'
+  if (status === 'error') return 'failed'
+  if (status === 'aborted') return 'aborted'
+  return null
+}
 
 export const useQueueDispatcher = (options: QueueDispatcherOptions): QueueDispatcherState => {
   const queueControllersByThreadId = reactive<Record<string, ThreadQueueController>>({})
@@ -481,7 +493,7 @@ export const useQueueDispatcher = (options: QueueDispatcherOptions): QueueDispat
     }
 
     try {
-      await options.ensureThreadTitleFromText(
+      options.reserveThreadTitleFromText(
         thread,
         text,
         dispatchOptions?.promptOptions?.images?.length ?? 0
@@ -685,6 +697,11 @@ export const useQueueDispatcher = (options: QueueDispatcherOptions): QueueDispat
   }
 
   const onRunSettled = async (threadId: string, runId: string, status: string): Promise<void> => {
+    const titleStatus = toThreadTitleRunStatus(status)
+    if (titleStatus === 'aborted' || titleStatus === 'failed') {
+      options.refineThreadTitleAfterRun({ threadId, status: titleStatus })
+    }
+
     const controller = ensureQueueController(threadId)
     if (controller.activeRunId !== null && controller.activeRunId !== runId) {
       if (status !== 'aborted') return
@@ -760,6 +777,10 @@ export const useQueueDispatcher = (options: QueueDispatcherOptions): QueueDispat
       controller.queue.splice(0, controller.queue.length)
     } else if (action.type === 'none' && shouldAutoFlushLocalQueue(controller)) {
       void dispatchQueuedHead(threadId)
+    }
+
+    if (titleStatus === 'finished') {
+      options.refineThreadTitleAfterRun({ threadId, status: titleStatus })
     }
   }
 

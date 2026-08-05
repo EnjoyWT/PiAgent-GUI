@@ -219,7 +219,7 @@ import {
   syncChatRunFromProjection,
   applyTransportAccountSetupEventToRuns,
   ensureAssistantTurnMessageIn,
-  findAssistantTurnMessageIn,
+  runHasVisibleAssistantOutput,
   turnHasVisibleAssistantOutput
 } from './utils/app-runtime'
 import { resolveInlineWidgetFromMessage } from './utils/inline-widget'
@@ -252,6 +252,11 @@ import {
   type EditingMessageState
 } from './utils/app-composer-actions'
 import { createRuntimeEventBridge } from './utils/app-runtime-event-bridge'
+import {
+  buildFallbackThreadTitle,
+  createThreadTitleCoordinator
+} from './utils/thread-title-coordinator'
+import { scheduleThreadTitleRefinement } from './utils/thread-title-lifecycle'
 import {
   applyContextCompactionEventToMessages,
   isContextCompactionEvent
@@ -485,7 +490,8 @@ const {
   activeRunByThreadId,
   getAgentRunMap,
   getThreadRowById,
-  ensureThreadTitleFromText: (...args) => ensureThreadTitleFromText(...args),
+  reserveThreadTitleFromText: (...args) => reserveThreadTitleFromText(...args),
+  refineThreadTitleAfterRun: (input) => refineThreadTitleAfterRun(input),
   ensureThreadStarted: (...args) => ensureThreadStarted(...args),
   ensureMessageBuffer: (threadId) => ensureMessageBuffer(threadId),
   setThreadStreaming,
@@ -738,62 +744,20 @@ const finalizeAssistantMessageForThread = async (
   run: AgentRun | null
 ): Promise<void> => {
   if (!run) return
+  const assistant = ensureAssistantTurnMessageIn(list, run, run.turns.at(-1) ?? null, true)
+  if (!assistant) return
 
-  const resolveAssistantTurnCreatedAt = (turn: AgentTurn | null): number | undefined => {
-    if (!turn) return undefined
-    if (typeof turn.endedAt === 'number') return turn.endedAt
+  assistant.run = run
+  assistant.agentRunId = run.id
+  assistant.isPending = false
+  assistant.content = getAssistantDisplayContentForRun(run)
+  assistant.createdAt = assistant.createdAt ?? new Date(run.endedAt ?? run.startedAt).toISOString()
 
-    let latestTimelineAt: number | undefined
-    for (const item of turn.timelineItems) {
-      if (item.kind !== 'text' && item.kind !== 'thinking') continue
-      const candidate =
-        typeof item.endedAt === 'number'
-          ? item.endedAt
-          : typeof item.startedAt === 'number'
-            ? item.startedAt
-            : undefined
-      if (candidate == null) continue
-      latestTimelineAt =
-        latestTimelineAt == null ? candidate : Math.max(latestTimelineAt, candidate)
-    }
-
-    if (latestTimelineAt != null) return latestTimelineAt
-    if (typeof turn.startedAt === 'number') return turn.startedAt
-    if (typeof run.endedAt === 'number') return run.endedAt
-    return run.startedAt
-  }
-
-  for (const turn of run.turns) {
-    const assistant =
-      syncAssistantTurnMessage(
-        list,
-        run,
-        turn,
-        turnHasVisibleAssistantOutput(turn) || Boolean(turn.text.trim())
-      ) ?? findAssistantTurnMessageIn(list, run, turn.id ?? null)
-    if (!assistant) continue
-
-    if (!assistant.content.trim() && !turnHasVisibleAssistantOutput(turn)) {
-      const idx = list.lastIndexOf(assistant)
-      if (idx >= 0 && !assistant.id) list.splice(idx, 1)
-      continue
-    }
-    assistant.isPending = false
-    assistant.createdAt =
-      assistant.createdAt ??
-      new Date(resolveAssistantTurnCreatedAt(turn) ?? run.startedAt).toISOString()
-  }
-
-  if (run.turns.length === 0) {
-    const assistant = ensureAssistantTurnMessageIn(list, run, null, true)
-    if (!assistant) return
-    assistant.isPending = false
-    assistant.run = run
-    assistant.agentRunId = run.id
-    if (!assistant.content.trim()) assistant.content = getAssistantDisplayContentForRun(run)
-    if (!assistant.content.trim()) return
-    assistant.createdAt =
-      assistant.createdAt ?? new Date(run.endedAt ?? run.startedAt).toISOString()
+  // Keep the one run-level flow mounted for tool/thinking-only runs. There is
+  // no transcript body in that case, but FlowRenderer still owns visible work.
+  if (!assistant.content.trim() && !runHasVisibleAssistantOutput(run) && !assistant.id) {
+    const idx = list.lastIndexOf(assistant)
+    if (idx >= 0) list.splice(idx, 1)
   }
 }
 
@@ -846,20 +810,47 @@ const ensureThreadStarted = async (thread: ThreadRow): Promise<ThreadRow> => {
   return updated ?? { ...thread, started_at: now }
 }
 
-const ensureThreadTitleFromText = async (
+const threadTitleCoordinator = createThreadTitleCoordinator({
+  buildFallbackTitle: buildFallbackThreadTitle,
+  generateTitle: async ({ text, imageCount }) => {
+    const result = await window.api.coreV2.localThreads.generateTitle({ text, imageCount })
+    return result.title
+  },
+  persistTitle: async (threadId, title) => {
+    await window.api.coreV2.localThreads.update(threadId, { title })
+    patchThreadRow(threadId, { title })
+  },
+  getCurrentTitle: (threadId) => getThreadRowById(threadId)?.title ?? null,
+  isThreadIdle: (threadId) =>
+    !Boolean(streamingByThreadId.value[threadId]) && !activeRunByThreadId.has(threadId)
+})
+
+const reserveThreadTitleFromText = (
   thread: ThreadRow,
   text: string,
   imageCount = 0
-): Promise<void> => {
-  if (thread.title && thread.title !== 'newchat') return
-  try {
-    const result = await window.api.coreV2.localThreads.generateTitle({ text, imageCount })
-    const title = result.title?.trim() || (imageCount > 0 ? '图片消息' : '新对话')
-    await window.api.coreV2.localThreads.update(thread.id, { title })
-    patchThreadRow(thread.id, { title })
-  } catch (err) {
-    console.error('Update thread title failed', err)
-  }
+): void => {
+  const title = threadTitleCoordinator.reserve({
+    threadId: thread.id,
+    currentTitle: thread.title,
+    text,
+    imageCount
+  })
+  if (!title) return
+
+  patchThreadRow(thread.id, { title })
+  void window.api.coreV2.localThreads.update(thread.id, { title }).catch((err) => {
+    console.error('Persist fallback thread title failed', err)
+  })
+}
+
+const refineThreadTitleAfterRun = (input: {
+  threadId: string
+  status: 'finished' | 'failed' | 'aborted'
+}): void => {
+  scheduleThreadTitleRefinement(input, (refinement) =>
+    threadTitleCoordinator.refineAfterRun(refinement)
+  )
 }
 
 // ── 滚动 ──────────────────────────────────────────────────────────

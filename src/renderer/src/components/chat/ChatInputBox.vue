@@ -7,7 +7,6 @@ import {
   Search,
   Sparkles,
   Wand2,
-  Plug,
   Lightbulb,
   Ban,
   ChevronDown,
@@ -16,8 +15,6 @@ import {
   Square,
   X,
   Gauge,
-  RefreshCw,
-  Settings2,
   ShieldCheck,
   Check,
   Eye,
@@ -342,14 +339,6 @@ watch(
   }
 )
 
-watch(
-  () => props.workspacePath,
-  () => {
-    showMcpMenu.value = false
-    void loadWorkspaceMcpServers()
-  }
-)
-
 onBeforeUnmount(() => {
   if (syncRaf != null) cancelAnimationFrame(syncRaf)
 })
@@ -527,10 +516,6 @@ const modelSearchQuery = ref('')
 const modelButtonRef = ref<HTMLElement | null>(null)
 const modelMenuRef = ref<HTMLElement | null>(null)
 const modelMenuStyle = ref<Record<string, string>>({})
-const showMcpMenu = ref(false)
-const mcpButtonRef = ref<HTMLElement | null>(null)
-const mcpMenuRef = ref<HTMLElement | null>(null)
-const mcpMenuStyle = ref<Record<string, string>>({})
 const showSandboxMenu = ref(false)
 const sandboxButtonRef = ref<HTMLElement | null>(null)
 const sandboxMenuRef = ref<HTMLElement | null>(null)
@@ -542,21 +527,6 @@ const showThinkingMenu = ref(false)
 const thinkingButtonRef = ref<HTMLElement | null>(null)
 const thinkingMenuRef = ref<HTMLElement | null>(null)
 const thinkingMenuStyle = ref<Record<string, string>>({})
-const mcpLoading = ref(false)
-const mcpHover = useHoverIntent({
-  groupId: 'chat-toolbar-menu',
-  onOpen: () => {
-    if (showMcpMenu.value) return
-    applyMcpMenuPosition()
-    showModelMenu.value = false
-    showThinkingMenu.value = false
-    showMcpMenu.value = true
-    void loadWorkspaceMcpServers()
-  },
-  onClose: () => {
-    showMcpMenu.value = false
-  }
-})
 
 const thinkingHover = useHoverIntent({
   groupId: 'chat-toolbar-menu',
@@ -564,7 +534,6 @@ const thinkingHover = useHoverIntent({
     if (showThinkingMenu.value) return
     applyThinkingMenuPosition()
     showModelMenu.value = false
-    showMcpMenu.value = false
     showThinkingMenu.value = true
   },
   onClose: () => {
@@ -572,21 +541,10 @@ const thinkingHover = useHoverIntent({
   }
 })
 
-const handleMcpMouseEnter = mcpHover.enter
-const handleMcpMouseLeave = mcpHover.close
-const clearMcpMenuTimer = mcpHover.cancel
 const handleThinkingMouseEnter = thinkingHover.enter
 const handleThinkingMouseLeave = thinkingHover.close
 const clearThinkingMenuTimer = thinkingHover.cancel
 
-const mcpServers = ref<
-  Array<{
-    id: string
-    name: string
-    command: string | null
-    enabledForWorkspace: boolean
-  }>
->([])
 const capabilityTooltip = ref<{
   visible: boolean
   text: string
@@ -705,10 +663,6 @@ const groupedFilteredModelOptions = computed(() => {
   }))
 })
 
-const enabledMcpCount = computed(
-  () => mcpServers.value.filter((item) => item.enabledForWorkspace).length
-)
-
 const applyThinkingMenuPosition = () => {
   const rect = thinkingButtonRef.value?.getBoundingClientRect()
   if (!rect) return
@@ -761,7 +715,6 @@ const toggleSandboxMenu = async () => {
   }
   applySandboxMenuPosition()
   showModelMenu.value = false
-  showMcpMenu.value = false
   showThinkingMenu.value = false
   showSandboxMenu.value = true
   await loadWorkspaceSandbox()
@@ -780,60 +733,10 @@ const setSandboxMode = async (mode: 'sandbox' | 'full') => {
   }
 }
 
-const applyMcpMenuPosition = () => {
-  const rect = mcpButtonRef.value?.getBoundingClientRect()
-  if (!rect) return
-  const width = 240
-  const margin = 12
-  const left = Math.min(Math.max(rect.left, margin), window.innerWidth - width - margin)
-  const top = rect.top - 8
-  mcpMenuStyle.value = {
-    left: `${left}px`,
-    top: `${top}px`,
-    width: `${width}px`,
-    transform: 'translateY(-100%)'
-  }
-}
-
-const loadWorkspaceMcpServers = async () => {
-  const workspacePath = String(props.workspacePath ?? '').trim()
-  if (!workspacePath || mcpLoading.value) {
-    if (!workspacePath) mcpServers.value = []
-    return
-  }
-
-  mcpLoading.value = true
-  const startTime = Date.now()
-  try {
-    const [installed, bindings] = await Promise.all([
-      window.api.db.mcpServers.list(),
-      window.api.db.workspaceMcpServers.list(workspacePath)
-    ])
-    const enabledById = new Map(bindings.map((row) => [row.server_id, row.enabled === 1] as const))
-    mcpServers.value = installed
-      .filter((row) => row.enabled === 1)
-      .map((row) => ({
-        id: row.id,
-        name: row.name,
-        command: row.command,
-        enabledForWorkspace: enabledById.get(row.id) === true
-      }))
-
-    // Add minimal delay to make refresh animation visible
-    const elapsed = Date.now() - startTime
-    if (elapsed < 400) {
-      await new Promise((resolve) => setTimeout(resolve, 400 - elapsed))
-    }
-  } finally {
-    mcpLoading.value = false
-  }
-}
-
 const toggleThinkingMenu = () => {
   if (!showThinkingMenu.value) {
     applyThinkingMenuPosition()
     showModelMenu.value = false
-    showMcpMenu.value = false
     capabilityTooltip.value.visible = false
   }
   showThinkingMenu.value = !showThinkingMenu.value
@@ -842,43 +745,6 @@ const toggleThinkingMenu = () => {
 const selectThinkingLevel = (level: ThinkingLevel) => {
   emit('select-thinking-level', level)
 }
-
-const toggleMcpMenu = async () => {
-  if (!showMcpMenu.value) {
-    applyMcpMenuPosition()
-    showThinkingMenu.value = false
-    showMcpMenu.value = true
-    void loadWorkspaceMcpServers()
-  }
-}
-
-const setWorkspaceMcpEnabled = async (serverId: string, enabled: boolean) => {
-  const workspacePath = String(props.workspacePath ?? '').trim()
-  if (!workspacePath) return
-  await window.api.db.workspaceMcpServers.setEnabled(workspacePath, serverId, enabled)
-  mcpServers.value = mcpServers.value.map((item) =>
-    item.id === serverId ? { ...item, enabledForWorkspace: enabled } : item
-  )
-}
-
-const selectAllMcpServers = async () => {
-  const workspacePath = String(props.workspacePath ?? '').trim()
-  if (!workspacePath) return
-  const updates = mcpServers.value.map((item) =>
-    window.api.db.workspaceMcpServers.setEnabled(workspacePath, item.id, true)
-  )
-  await Promise.all(updates)
-  mcpServers.value = mcpServers.value.map((item) => ({ ...item, enabledForWorkspace: true }))
-}
-
-const clearAllMcpServers = async () => {
-  const workspacePath = String(props.workspacePath ?? '').trim()
-  if (!workspacePath) return
-  await window.api.db.workspaceMcpServers.clear(workspacePath)
-  mcpServers.value = mcpServers.value.map((item) => ({ ...item, enabledForWorkspace: false }))
-}
-
-const openMcpSettings = () => window.api.openSettings('mcp')
 
 const toggleModelMenu = () => {
   if (!props.modelOptions?.length) return
@@ -898,7 +764,6 @@ const toggleModelMenu = () => {
     }
     modelSearchQuery.value = ''
     showThinkingMenu.value = false
-    showMcpMenu.value = false
   }
   showModelMenu.value = !showModelMenu.value
   if (!showModelMenu.value) capabilityTooltip.value.visible = false
@@ -918,11 +783,6 @@ const handleClickOutside = (e: MouseEvent) => {
       capabilityTooltip.value.visible = false
     }
   }
-  if (showMcpMenu.value) {
-    if (!mcpButtonRef.value?.contains(target) && !mcpMenuRef.value?.contains(target)) {
-      showMcpMenu.value = false
-    }
-  }
   if (showThinkingMenu.value) {
     if (!thinkingButtonRef.value?.contains(target) && !thinkingMenuRef.value?.contains(target)) {
       showThinkingMenu.value = false
@@ -937,7 +797,6 @@ const handleClickOutside = (e: MouseEvent) => {
 
 const handleViewportChange = () => {
   showModelMenu.value = false
-  showMcpMenu.value = false
   showThinkingMenu.value = false
   showSandboxMenu.value = false
   capabilityTooltip.value.visible = false
@@ -956,7 +815,6 @@ watch(
 )
 
 onMounted(() => {
-  void loadWorkspaceMcpServers()
   document.addEventListener('mousedown', handleClickOutside)
   document.addEventListener('keydown', handleKeyDown)
   window.addEventListener('resize', handleViewportChange)
@@ -1169,24 +1027,6 @@ const showContextUsageTooltip = (event: MouseEvent) => {
             </button>
 
             <button
-              ref="mcpButtonRef"
-              class="relative w-8 h-8 rounded-lg bg-(--chat-input-toolbar-btn-bg,#fcfcfd) hover:bg-(--theme-bg-hover-btn) flex items-center justify-center"
-              type="button"
-              aria-label="MCP servers"
-              @mouseenter="handleMcpMouseEnter"
-              @mouseleave="handleMcpMouseLeave"
-              @click="toggleMcpMenu"
-            >
-              <Plug :size="16" class="text-(--theme-text-dim)" />
-              <span
-                v-if="enabledMcpCount > 0"
-                class="absolute top-1 right-1 translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full text-white text-[6px] font-bold flex items-center justify-center"
-                style="background-color: var(--chat-input-badge-bg, #00ba88)"
-                >{{ enabledMcpCount }}</span
-              >
-            </button>
-
-            <button
               ref="thinkingButtonRef"
               class="relative w-8 h-8 rounded-lg bg-(--chat-input-toolbar-btn-bg,#fcfcfd) hover:bg-(--theme-bg-hover-btn) flex items-center justify-center"
               type="button"
@@ -1334,113 +1174,6 @@ const showContextUsageTooltip = (event: MouseEvent) => {
             <span>完全模式</span>
             <Check v-if="sandboxMode === 'full'" :size="14" />
           </button>
-        </div>
-      </div>
-    </Transition>
-
-    <Transition name="model-menu">
-      <div
-        v-if="showMcpMenu"
-        ref="mcpMenuRef"
-        class="fixed z-80 rounded-2xl border border-(--theme-border-base) bg-(--theme-bg-main) shadow-[0_18px_50px_rgba(0,0,0,0.3)]"
-        :style="mcpMenuStyle"
-        @mouseenter="clearMcpMenuTimer"
-        @mouseleave="handleMcpMouseLeave"
-      >
-        <div class="border-b border-(--theme-border-base) px-4 py-3">
-          <div class="flex items-center justify-between gap-3">
-            <div class="flex items-center gap-2">
-              <Plug :size="14" class="text-(--theme-text-dim)" />
-              <div class="text-[12px] font-semibold text-(--theme-text-bright)">MCP 服务器</div>
-            </div>
-            <div class="flex items-center gap-1">
-              <Tooltip text="刷新 MCP 列表">
-                <button
-                  type="button"
-                  class="inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-800"
-                  aria-label="刷新 MCP 列表"
-                  @click="loadWorkspaceMcpServers"
-                >
-                  <RefreshCw :size="14" :class="{ 'animate-spin': mcpLoading }" />
-                </button>
-              </Tooltip>
-              <Tooltip text="打开 MCP 设置">
-                <button
-                  type="button"
-                  class="inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-800"
-                  aria-label="打开 MCP 设置"
-                  @click="openMcpSettings"
-                >
-                  <Settings2 :size="14" />
-                </button>
-              </Tooltip>
-            </div>
-          </div>
-          <p class="mt-1.5 text-[11px] leading-relaxed text-gray-400">
-            选择要为当前项目路径启用的服务器。
-          </p>
-          <div class="mt-3 flex items-center gap-2 text-[11px]">
-            <button
-              type="button"
-              class="rounded-lg bg-gray-100 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-200"
-              @click="selectAllMcpServers"
-            >
-              全选
-            </button>
-            <button
-              type="button"
-              class="rounded-lg px-3 py-1.5 font-medium text-gray-600 hover:bg-gray-100"
-              @click="clearAllMcpServers"
-            >
-              清除全部
-            </button>
-          </div>
-        </div>
-
-        <div class="max-h-80 overflow-y-auto px-2 py-2">
-          <div
-            v-if="mcpLoading && mcpServers.length === 0"
-            class="flex h-20 items-center justify-center text-[11px] text-gray-400"
-          >
-            正在加载 MCP 列表...
-          </div>
-          <div
-            v-else-if="!mcpLoading && !props.workspacePath"
-            class="flex h-20 items-center justify-center text-[11px] text-gray-400 text-center"
-          >
-            当前还没有可用的项目路径。
-          </div>
-          <div
-            v-else-if="!mcpLoading && mcpServers.length === 0"
-            class="flex flex-col h-20 items-center justify-center text-[11px] text-gray-400 gap-1.5"
-          >
-            <div>还没有安装任何 MCP 服务器。</div>
-            <button class="text-blue-500 hover:underline cursor-pointer" @click="openMcpSettings">
-              去设置里添加
-            </button>
-          </div>
-          <div v-else class="space-y-0.5" :class="{ 'opacity-60 pointer-events-none': mcpLoading }">
-            <label
-              v-for="server in mcpServers"
-              :key="server.id"
-              class="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-gray-100 cursor-pointer"
-            >
-              <span class="truncate text-[13px] text-gray-700 select-none">
-                {{ server.name }}
-              </span>
-              <button
-                type="button"
-                class="relative inline-flex h-4 w-7 shrink-0 rounded-full transition-colors"
-                :class="server.enabledForWorkspace ? 'bg-[#00ba88]' : 'bg-gray-200'"
-                @click.prevent="setWorkspaceMcpEnabled(server.id, !server.enabledForWorkspace)"
-              >
-                <span
-                  class="absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-transform"
-                  :class="server.enabledForWorkspace ? 'translate-x-3.5' : 'translate-x-0.5'"
-                />
-              </button>
-            </label>
-          </div>
         </div>
       </div>
     </Transition>

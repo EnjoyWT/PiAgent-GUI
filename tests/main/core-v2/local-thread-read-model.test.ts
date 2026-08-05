@@ -722,7 +722,7 @@ test('latest window recovers one run-level assistant shell from a live snapshot'
   assert.equal(page.isStreaming, true)
 })
 
-test('local thread read model recovers completed thinking-only assistant turns', () => {
+test('local thread read model recovers a completed thinking-only run in one run-level assistant entry', () => {
   const core = createService()
   const projection = createProjectionStore()
   const host = new LocalThreadHostService({
@@ -782,7 +782,7 @@ test('local thread read model recovers completed thinking-only assistant turns',
   assert.equal(projected.messages[0]?.id, userMessage.id)
   assert.equal(projected.messages[1]?.role, 'assistant')
   assert.equal(projected.messages[1]?.agentRunId, 'run-thinking')
-  assert.equal(projected.messages[1]?.agentTurnId, 'turn-thinking')
+  assert.equal(projected.messages[1]?.agentTurnId, null)
   assert.equal(projected.messages[1]?.content, '')
   assert.equal(projected.runs[0]?.turns[0]?.timelineItems[0]?.kind, 'thinking')
 })
