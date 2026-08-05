@@ -26,7 +26,9 @@ const {
   applyTransportAccountSetupEventToRuns,
   buildRunFinishedNotificationPreview,
   ensureAssistantTurnMessageIn,
+  getAssistantDisplayContentForRun,
   getRunFinishedNotificationPreview,
+  isRunFlowPresentationMessage,
   shouldCreateAssistantMessageForTurn,
   turnHasVisibleAssistantOutput
 } =
@@ -129,6 +131,47 @@ test('uses one stable assistant flow container across live turns of the same run
   assert.equal(messages.length, 1)
 })
 
+test('keeps a run-level assistant container eligible to render after the run enters a second turn', () => {
+  const run: AgentRun = {
+    id: 'run-multi-turn-flow',
+    threadId: 'thread-1',
+    status: 'running',
+    text: '',
+    startedAt: 10,
+    turns: [
+      {
+        id: 'turn-1',
+        index: 0,
+        status: 'done',
+        text: '',
+        toolCalls: [],
+        timelineItems: [],
+        startedAt: 10,
+        endedAt: 20
+      },
+      {
+        id: 'turn-2',
+        index: 1,
+        status: 'running',
+        text: '',
+        toolCalls: [],
+        timelineItems: [],
+        startedAt: 21
+      }
+    ]
+  }
+
+  assert.equal(
+    isRunFlowPresentationMessage({
+      role: 'assistant',
+      content: '',
+      agentRunId: run.id,
+      run
+    }),
+    true
+  )
+})
+
 test('binds a run to only one optimistic thinking placeholder', () => {
   const run: AgentRun = {
     id: 'run-placeholder',
@@ -182,6 +225,32 @@ test('keeps a completed thinking-only turn renderable', () => {
 
   assert.equal(turnHasVisibleAssistantOutput(turn), true)
   assert.equal(shouldCreateAssistantMessageForTurn(turn), true)
+})
+
+test('keeps a terminal turn error visible in the stable run-level container', () => {
+  const run: AgentRun = {
+    id: 'run-terminal-error',
+    threadId: 'thread-1',
+    status: 'error',
+    text: '',
+    startedAt: 10,
+    endedAt: 20,
+    turns: [
+      {
+        id: 'turn-error',
+        index: 0,
+        status: 'error',
+        text: '',
+        errorMessage: '429: rpm exhausted',
+        toolCalls: [],
+        timelineItems: [],
+        startedAt: 10,
+        endedAt: 20
+      }
+    ]
+  }
+
+  assert.equal(getAssistantDisplayContentForRun(run), '429: rpm exhausted')
 })
 
 test('buildRunFinishedNotificationPreview normalizes whitespace and truncates long text', () => {

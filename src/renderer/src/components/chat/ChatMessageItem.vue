@@ -19,6 +19,7 @@ import ChatImageGallery from './ChatImageGallery.vue'
 import type { AgentRun, AgentTurn, ChatWidget, ChatContentBlock, ChatImageBlock } from './types'
 import { buildMessageRenderFlow } from './flow-blocks'
 import type { TransportSetupQrProjection } from '@shared/agent-runtime'
+import { isRunFlowPresentationMessage } from '../../utils/app-runtime'
 
 const props = defineProps<{
   id?: string
@@ -78,10 +79,7 @@ const textContent = computed(() => {
   return textBlocks.length > 0 ? textBlocks.map((block) => block.text).join('') : props.content
 })
 const useAssistantRunFlow = computed(
-  () =>
-    props.role === 'assistant' &&
-    Boolean(props.run) &&
-    (Boolean(props.agentTurnId) || (props.run?.turns.length ?? 0) <= 1)
+  () => isRunFlowPresentationMessage(props)
 )
 const isAssistantRunFlowOwner = computed(() => {
   if (!useAssistantRunFlow.value || !props.run) return false

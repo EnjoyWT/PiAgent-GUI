@@ -806,40 +806,13 @@ const turnHasVisibleOutput = (turn: AgentTurnProjection): boolean =>
       (item.kind === 'text' && item.text.trim().length > 0)
   )
 
-const buildAssistantMessageKey = (runId?: string | null, turnId?: string | null): string | null => {
-  const normalizedRunId = asString(runId).trim()
-  if (!normalizedRunId) return null
-  const normalizedTurnId = asString(turnId).trim()
-  return normalizedTurnId ? `turn:${normalizedRunId}:${normalizedTurnId}` : `run:${normalizedRunId}`
-}
-
-const shouldRecoverAssistantTurnMessage = (
-  run: AgentRunProjection,
-  turn: AgentTurnProjection
-): boolean =>
-  // A running turn has no persisted assistant row until its first delta arrives.
-  // Recover its shell so switching back to the thread immediately restores the live run UI.
-  (run.status === 'running' && turn.status === 'running') ||
-  turnHasVisibleOutput(turn) ||
-  (turn.status === 'error' && Boolean(turn.errorMessage?.trim()))
-
-const buildRecoveredAssistantTurnMessage = (
-  run: AgentRunProjection,
-  turn: AgentTurnProjection
-): AgentThreadMessageProjection => ({
-  createdAt: normalizeCoreTimestamp(turn.endedAt ?? turn.startedAt ?? run.endedAt ?? run.startedAt),
-  agentRunId: run.agentRunId,
-  agentTurnId: turn.agentTurnId,
-  role: 'assistant',
-  content: turn.text || (turn.status === 'error' ? turn.errorMessage?.trim() || '' : ''),
-  isPending: run.status === 'running' && run.turns.at(-1)?.agentTurnId === turn.agentTurnId
-})
-
 const shouldRecoverRunLevelAssistantMessage = (run: AgentRunProjection): boolean =>
   run.status === 'running' ||
-  (run.turns.length === 0 &&
-    (run.text.trim().length > 0 ||
-      (run.status === 'error' && Boolean(run.termination?.message?.trim()))))
+  run.text.trim().length > 0 ||
+  run.turns.some(
+    (turn) => turnHasVisibleOutput(turn) || (turn.status === 'error' && Boolean(turn.errorMessage?.trim()))
+  ) ||
+  (run.status === 'error' && Boolean(run.termination?.message?.trim()))
 
 const buildRecoveredRunLevelAssistantMessage = (
   run: AgentRunProjection
@@ -1050,7 +1023,6 @@ const buildThreadProjectionFromSeed = (
     )
   }
 
-  const assistantMessageKeys = new Set<string>()
   const visibleMessages: AgentThreadMessageProjection[] = []
   const deferredQuestionAnswerRows: Array<{
     message: ConversationMessage
@@ -1064,16 +1036,6 @@ const buildThreadProjectionFromSeed = (
       (message.role === 'user' || message.role === 'assistant') &&
       !isSystemFollowupSyntheticUserMessage(message, systemFollowupRunIds)
   )
-  const runsWithTurnLevelAssistantRows = new Set(
-    persistedRows
-      .filter((message) => {
-        if (message.role !== 'assistant') return false
-        const meta = parseLocalThreadMessageMeta(message)
-        return Boolean(asString(meta.agentRunId).trim() && asString(meta.agentTurnId).trim())
-      })
-      .map((message) => asString(parseLocalThreadMessageMeta(message).agentRunId).trim())
-  )
-
   for (const message of persistedRows) {
     const meta = parseLocalThreadMessageMeta(message)
     const blocks = meta.content?.blocks
@@ -1116,16 +1078,6 @@ const buildThreadProjectionFromSeed = (
       resolvedRunId = legacyRun.agentRunId
     }
 
-    if (
-      !asString(meta.agentTurnId).trim() &&
-      resolvedRunId &&
-      runsWithTurnLevelAssistantRows.has(resolvedRunId)
-    ) {
-      continue
-    }
-
-    const assistantMessageKey = buildAssistantMessageKey(resolvedRunId, meta.agentTurnId)
-    if (assistantMessageKey) assistantMessageKeys.add(assistantMessageKey)
     visibleMessages.push(
       buildMessageProjection(
         message,
@@ -1185,22 +1137,11 @@ const buildThreadProjectionFromSeed = (
       continue
     }
 
-    const hasLegacyRunMessage = assistantMessageKeys.has(`run:${run.agentRunId}`)
-    if (hasLegacyRunMessage) continue
-    for (const turn of run.turns) {
-      const key = buildAssistantMessageKey(run.agentRunId, turn.agentTurnId)
-      if (!key || assistantMessageKeys.has(key) || !shouldRecoverAssistantTurnMessage(run, turn)) {
-        continue
-      }
-      visibleMessages.push(buildRecoveredAssistantTurnMessage(run, turn))
-      assistantMessageKeys.add(key)
-    }
-    if (
-      !assistantMessageKeys.has(`run:${run.agentRunId}`) &&
-      shouldRecoverRunLevelAssistantMessage(run)
-    ) {
+    const hasPersistedAssistantMessage = visibleMessages.some(
+      (message) => message.role === 'assistant' && message.agentRunId === run.agentRunId
+    )
+    if (!hasPersistedAssistantMessage && shouldRecoverRunLevelAssistantMessage(run)) {
       visibleMessages.push(buildRecoveredRunLevelAssistantMessage(run))
-      assistantMessageKeys.add(`run:${run.agentRunId}`)
     }
   }
 
