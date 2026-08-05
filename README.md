@@ -2,7 +2,7 @@
 
 **面向本地 AI Agent 的桌面工作台。** PiAgent-GUI 基于 Electron、Vue 3 和 TypeScript 构建，将本地编码 Agent、会话与运行流、消息入口、扩展生态、长期记忆和计划任务整合到一个本地优先的桌面应用中。
 
-底层 Agent runtime 使用 [pi-mono](https://github.com/badlogic/pi-mono) 的 `@earendil-works/pi-*` 包；PiAgent-GUI 聚焦于桌面交互、运行编排和本地集成体验。
+底层 Agent runtime 使用 [pi-mono](https://github.com/earendil-works/pi) 的 `@earendil-works/pi-*` 包；PiAgent-GUI 聚焦于桌面交互、运行编排和本地集成体验。
 
 ## 界面预览
 
@@ -19,6 +19,8 @@
 需要 Node.js 22+ 和 pnpm。
 
 ```bash
+git clone https://github.com/EnjoyWT/PiAgent-GUI.git
+cd PiAgent-GUI
 pnpm install
 pnpm dev
 ```
@@ -110,7 +112,7 @@ pnpm run build:linux
 
 ## 致谢
 
-- [pi-mono](https://github.com/badlogic/pi-mono) 及其 `@earendil-works/pi-*` runtime 包，为本项目提供底层 Agent 运行能力。
+- [pi-mono](https://github.com/earendil-works/pi) 及其 `@earendil-works/pi-*` runtime 包，为本项目提供底层 Agent 运行能力。
 - AlMA 的桌面 Agent 交互与视觉结构，为 PiAgent-GUI 的界面工程化适配提供了重要参考。
 - OpenClaw、Hermes 等多入口 Agent 架构的实践，为消息接入与路由设计提供了启发。
 - Memos 的信息沉淀思路，为长期记忆的组织方式提供了参考。
