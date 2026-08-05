@@ -29,7 +29,8 @@ export const cleanupLocalConversations = (onProgress?: (progress: unknown) => vo
     })
     worker.send({
       coreDbPath: getDefaultCoreV2DbPath(),
-      contextDbPath: join(app.getPath('userData'), 'context.db')
+      contextDbPath: join(app.getPath('userData'), 'context.db'),
+      tempWorkspacesRootPath: join(app.getPath('userData'), 'temp-workspaces')
     })
   }).finally(() => {
     cleanupPromise = null

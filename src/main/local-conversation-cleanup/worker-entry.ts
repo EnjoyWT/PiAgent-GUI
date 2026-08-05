@@ -1,4 +1,9 @@
 import Database from 'better-sqlite3'
+import { rmSync } from 'node:fs'
+
+export const clearTemporaryWorkspaces = (tempWorkspacesRootPath: string): void => {
+  rmSync(tempWorkspacesRootPath, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })
+}
 
 export const clearLocalConversationData = (
   coreDb: Pick<Database.Database, 'prepare' | 'exec'>,
@@ -26,6 +31,7 @@ export const clearLocalConversationData = (
 export const runLocalConversationCleanupWorker = (input: {
   coreDbPath: string
   contextDbPath: string
+  tempWorkspacesRootPath: string
 }): void => {
   const coreDb = new Database(input.coreDbPath)
   const contextDb = new Database(input.contextDbPath)
@@ -34,6 +40,7 @@ export const runLocalConversationCleanupWorker = (input: {
     coreDb.pragma('busy_timeout = 1000')
     contextDb.pragma('busy_timeout = 1000')
     clearLocalConversationData(coreDb, contextDb, (completed, total) => process.send?.({ kind: 'progress', phase: 'deleting', completed, total }))
+    clearTemporaryWorkspaces(input.tempWorkspacesRootPath)
     process.send?.({ kind: 'progress', phase: 'compacting' })
     coreDb.pragma('wal_checkpoint(TRUNCATE)')
     contextDb.pragma('wal_checkpoint(TRUNCATE)')
@@ -48,7 +55,11 @@ export const runLocalConversationCleanupWorker = (input: {
 if (process.send) {
   process.on('message', (message: unknown) => {
     try {
-      runLocalConversationCleanupWorker(message as { coreDbPath: string; contextDbPath: string })
+      runLocalConversationCleanupWorker(message as {
+        coreDbPath: string
+        contextDbPath: string
+        tempWorkspacesRootPath: string
+      })
       process.send?.({ kind: 'done' })
     } catch (error) {
       process.send?.({ kind: 'error', message: error instanceof Error ? error.message : String(error) })
