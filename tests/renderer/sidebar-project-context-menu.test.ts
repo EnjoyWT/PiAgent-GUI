@@ -34,6 +34,18 @@ test('App handles project context menu deletion through workspace data deletion'
   assert.match(source, /await reloadWorkspaceSnapshot\(\)/)
 })
 
+test('App removes a temporary workspace directory after deleting its last thread', () => {
+  const source = readSource('src/renderer/src/App.vue')
+
+  assert.match(source, /getDisposableTemporaryWorkspacePath/)
+  assert.match(source, /previousThreads\.find\(\(thread\) => thread\.id === threadId\)/)
+  assert.match(
+    source,
+    /nextThreads\.some\(\(thread\) => thread\.workspace_path === workspacePath\)/
+  )
+  assert.match(source, /await window\.api\.workspace\.deleteDirectory\(tempWorkspacePathToDelete\)/)
+})
+
 test('AppSidebar pins temporary session group before normal workspace sorting', () => {
   const source = readSource('src/renderer/src/components/layout/AppSidebar.vue')
   const sortIndex = source.indexOf('groups.sort((a, b) => {')

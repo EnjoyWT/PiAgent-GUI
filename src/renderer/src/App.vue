@@ -1016,6 +1016,24 @@ const omitRecordKey = <T,>(record: Record<string, T>, key: string): Record<strin
   return next
 }
 
+const isTemporaryWorkspacePath = (workspacePath: string): boolean => {
+  const segments = workspacePath.replace(/\\/g, '/').split('/').filter(Boolean)
+  const tempRootIndex = segments.lastIndexOf('temp-workspaces')
+  return tempRootIndex >= 0 && tempRootIndex < segments.length - 1
+}
+
+const getDisposableTemporaryWorkspacePath = (
+  threadId: string,
+  previousThreads: ThreadRow[],
+  nextThreads: ThreadRow[]
+): string | null => {
+  const deletedThread = previousThreads.find((thread) => thread.id === threadId)
+  const workspacePath = deletedThread?.workspace_path?.trim()
+  if (!workspacePath || !isTemporaryWorkspacePath(workspacePath)) return null
+  if (nextThreads.some((thread) => thread.workspace_path === workspacePath)) return null
+  return workspacePath
+}
+
 const pruneThreadLocalState = (threadId: string): void => {
   messageCacheByThreadId.delete(threadId)
   agentRunsByThreadId.delete(threadId)
@@ -1378,6 +1396,11 @@ const deleteThreadById = async (id: string): Promise<void> => {
   const previousThreads = threads.value
   const nextThreads = previousThreads.filter((thread) => thread.id !== id)
   if (nextThreads.length === previousThreads.length) return
+  const tempWorkspacePathToDelete = getDisposableTemporaryWorkspacePath(
+    id,
+    previousThreads,
+    nextThreads
+  )
 
   pruneThreadLocalState(id)
   threads.value = nextThreads
@@ -1399,6 +1422,24 @@ const deleteThreadById = async (id: string): Promise<void> => {
       title: '删除失败',
       message: '会话未能加入删除队列，已恢复到列表中。'
     })
+    return
+  }
+
+  if (tempWorkspacePathToDelete) {
+    try {
+      const result = await window.api.workspace.deleteDirectory(tempWorkspacePathToDelete)
+      if (!result.success) {
+        console.warn('Delete temporary workspace directory failed', {
+          workspacePath: tempWorkspacePathToDelete,
+          error: result.error
+        })
+      }
+    } catch (error) {
+      console.warn('Delete temporary workspace directory failed', {
+        workspacePath: tempWorkspacePathToDelete,
+        error
+      })
+    }
   }
 }
 
